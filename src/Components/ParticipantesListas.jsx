@@ -1,95 +1,111 @@
 // src/Components/ParticipantList.js
-// (O guarda en src/components/participant/ParticipantList.js si prefieres esa estructura)
+import React from 'react';
+import { Table, Tag, Tooltip } from 'antd'; // Añadido Tooltip
 
-import React from "react";
-import { Table, Tag } from "antd";
-
-// Componente para mostrar la tabla de participantes
 export const ParticipantList = ({ participants = [] }) => {
-  // Asegura default como array vacío
 
-  // Definición de las columnas para la tabla de Ant Design
   const columns = [
     {
-      title: "Nombre", // Título de la columna
-      dataIndex: "name", // Campo del objeto participante a mostrar
-      key: "name", // Key única para la columna
-      sorter: (a, b) => a.name.localeCompare(b.name), // Habilita ordenamiento alfabético
+      title: 'Nombre',
+      dataIndex: 'name',
+      key: 'name',
+      sorter: (a, b) => a.name.localeCompare(b.name),
+      // fixed: 'left', // Descomentar si quieres fijar esta columna al hacer scroll horizontal
     },
     {
-      title: "Apellido",
-      dataIndex: "lastName",
-      key: "lastName",
-      sorter: (a, b) => (a.lastName || "").localeCompare(b.lastName || ""), // Ordenamiento, maneja posibles null/undefined
+      title: 'Apellido',
+      dataIndex: 'lastName',
+      key: 'lastName',
+      sorter: (a, b) => (a.lastName || '').localeCompare(b.lastName || ''),
+      // fixed: 'left', // Descomentar si quieres fijar esta columna al hacer scroll horizontal
     },
     {
-      title: "DNI",
-      dataIndex: "dni",
-      key: "dni",
+      title: 'DNI',
+      dataIndex: 'dni',
+      key: 'dni',
     },
-    // --- NUEVA COLUMNA ---
     {
-      title: "Nro. Entrada",
-      dataIndex: "entryNumber",
-      key: "entryNumber",
+      title: 'Nro. Entrada',
+      dataIndex: 'entryNumber',
+      key: 'entryNumber',
     },
-    // --- FIN NUEVA ---
     {
-      title: "Estado Acreditación",
-      dataIndex: "accredited", // <-- CAMBIO dataIndex
-      key: "accredited",
-      render: (
-        accredited // <-- CAMBIO lógica render
-      ) => (
-        <Tag color={accredited === 1 ? "green" : "volcano"}>
-          {accredited === 1 ? "ACREDITADO" : "PENDIENTE"}
+      title: 'Estado', // Título más corto
+      dataIndex: 'accredited',
+      key: 'accredited',
+      align: 'center', // Centrar contenido
+      width: 120, // Ancho fijo para esta columna puede ayudar
+      render: (accredited) => (
+        <Tag color={accredited === 1 ? 'green' : 'volcano'} style={{ margin: 'auto' }}>
+          {accredited === 1 ? 'ACREDITADO' : 'PENDIENTE'}
         </Tag>
       ),
       filters: [
-        // <-- CAMBIO values
-        { text: "Acreditado", value: 1 },
-        { text: "Pendiente", value: 0 },
+        { text: 'Acreditado', value: 1 },
+        { text: 'Pendiente', value: 0 },
       ],
-      onFilter: (value, record) => record.accredited === value, // <-- CAMBIO lógica onFilter
+      onFilter: (value, record) => record.accredited === value,
     },
-    // --- NUEVAS COLUMNAS OPCIONALES ---
+    // --- COLUMNAS OPCIONALES OCULTAS EN MÓVIL ---
     {
-      title: "Teléfono",
-      dataIndex: "phone",
-      key: "phone",
-      render: (phone) => phone || "-", // Muestra '-' si es null/undefined
+      title: 'Teléfono',
+      dataIndex: 'phone',
+      key: 'phone',
+      render: (phone) => phone || '-',
+      // responsive: ['md'] -> Oculta en pantallas < 768px (sm y xs)
+      responsive: ['md'],
     },
     {
-      title: "Correo Electrónico",
-      dataIndex: "email",
-      key: "email",
-      render: (email) => email || "-", // Muestra '-' si es null/undefined
+      title: 'Correo', // Título más corto
+      dataIndex: 'email',
+      key: 'email',
+      render: (email) => email ? (
+         // Tooltip para correos largos
+         <Tooltip title={email}>
+             <span style={{ display: 'inline-block', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                 {email}
+             </span>
+         </Tooltip>
+      ) : '-',
+      // responsive: ['lg'] -> Oculta en pantallas < 992px (md, sm, xs) - Más agresivo
+      responsive: ['lg'],
     },
-    // --- FIN NUEVAS OPCIONALES ---
+    // --- FIN COLUMNAS OPCIONALES ---
+    // Podrías añadir una columna de acciones aquí si fuera necesario (ej: des-acreditar, editar participante)
+    // {
+    //   title: 'Acciones',
+    //   key: 'actions',
+    //   align: 'center',
+    //   fixed: 'right', // Fija la columna de acciones a la derecha
+    //   render: (_, record) => (
+    //     <Space>
+    //       {/* Botones de acción para cada participante */}
+    //     </Space>
+    //   ),
+    // }
   ];
 
   return (
     <Table
-      columns={columns} // Define la estructura de la tabla
-      dataSource={participants} // Los datos a mostrar (el array de participantes)
-      rowKey="id" // Campo único para identificar cada fila (el ID del participante)
+      columns={columns}
+      dataSource={participants}
+      rowKey="id"
       pagination={{
-        // Configuración de paginación
-        pageSize: 15, // Cuántos items por página
-        showSizeChanger: true, // Permite cambiar el tamaño de página
-        pageSizeOptions: ["15", "30", "50", "100"], // Opciones de tamaño
-        showTotal: (total, range) =>
-          `${range[0]}-${range[1]} de ${total} participantes`, // Muestra el total
-        hideOnSinglePage: true, // Oculta paginación si todo cabe en una página
+        pageSize: 10, // Reducido para móvil puede ser mejor
+        showSizeChanger: true,
+        pageSizeOptions: ['10', '20', '50', '100'],
+        showTotal: (total, range) => `${range[0]}-${range[1]} de ${total}`,
+        hideOnSinglePage: true,
+        size: 'small', // Paginación más compacta
       }}
-      locale={{ emptyText: "No hay participantes cargados para este evento." }} // Mensaje si no hay datos
-      style={{ marginTop: "20px" }} // Un poco de margen superior
-      scroll={{ x: "max-content" }} // Habilita scroll horizontal si las columnas no caben
-      bordered // Añade bordes a la tabla (opcional)
-      size="small" // Tabla un poco más compacta (opcional)
+      locale={{ emptyText: 'No hay participantes cargados para este evento.' }}
+      // style={{ marginTop: '20px' }} // QUITADO - Dejar que el contenedor padre maneje el margen
+      // --- CLAVE PARA RESPONSIVIDAD DE TABLA ---
+      scroll={{ x: 'max-content' }} // Habilita scroll horizontal
+      // -------------------------------------------
+      // bordered // Quitado borde para un look más limpio (opcional)
+      size="small" // Tabla más compacta
+      className="responsive-participant-table" // Clase CSS opcional para estilos específicos
     />
   );
 };
-
-// Si prefieres export default:
-// export default ParticipantList;
