@@ -1,0 +1,23 @@
+/* src/index.css */
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #f0f2f5; /* Color de fondo típico de layouts AntD */
+  }
+  
+  /* Opcional: asegurar que el layout AntD ocupe toda la altura */
+  #root, .ant-layout {
+    min-height: 100vh;
+  }
+  
+  /* Pequeño ajuste para que los Modales no hereden el fondo gris si algo sale mal */
+  .ant-modal-wrap {
+      background-color: rgba(0, 0, 0, 0.45); /* Fondo oscuro semi-transparente por defecto */
+  }
+  .ant-modal-content {
+      background-color: #ffffff; /* Fondo blanco por defecto */
+  }

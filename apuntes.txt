@@ -1,0 +1,19 @@
+
+eventos
+columnas: nombre, fecha, ubicacion, descripcion(opcional)
+dentro de un evento seleccionado, una vez cargado tiene la posibilidad de vincular a las personas por medio de excel
+o sino de manera individual, en donde deberan completar los datos de la persona, seria un popup con un formulario
+y asi poder vincular a la persona al evento, para que pueda ser acreditada como las otras personas.
+
+vinculacion de personas:
+se cargan al evento, primero se selecciona el evento y dentro se posibilita la opcion de importar.
+habria una tabla personasEvento, donde guardaria el id del evento y los datos de las personas que 
+vincularian un listado de personas por medio de un excel y una columna de "acreditado", con 0 
+para no acreditado y 1 para acreditado, por defecto seria 0.
+datos de la persona(columnas del excel): nombre, apellido, dni, nro_entrada, telefono(opcional), correo(opcional).
+los datos  obligatorios son: nombre, apellido, dni, nro_entrada.
+
+acreditacion : puede ser una opcion del evento, el modo acreditar, mostraria un popup que permitira
+poner el dni o nro_entrada de la persona, luego habria otro popup encima donde se mostraria
+el resultado, q serian 2, uno donde no encontro a la persona, otro donde mostraria el nombre y el apellido
+y daria la opcion de "acreditar" o cancelar,si se acredita actualizaria el registro y pondria a acreditado igual 1    
