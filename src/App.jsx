@@ -22,6 +22,16 @@ const { Title } = Typography;
 import { Toaster } from 'react-hot-toast'; // Importa Toaster
 
 
+// --- Error Boundary ---
+import { ErrorBoundary } from 'react-error-boundary'; // Importa de la librería
+import ErrorFallback from './Components/ErrorFallback'; // Importa tu componente de fallback
+// ---------------------
+// Función para loguear errores (opcional pero recomendada)
+const logError = (error, info) => {
+  // Puedes enviar esto a un servicio de logging (Sentry, LogRocket, etc.)
+  console.error("Error capturado por ErrorBoundary:", error, info);
+};
+
 function App() {
   // const { isAuthenticated } = useAuth(); // Ejemplo si usas contexto de autenticación
 
@@ -73,6 +83,14 @@ function App() {
           </Title>
           {/* Podrías añadir un logo o navegación aquí si fuera necesario */}
         </Header>
+        <ErrorBoundary
+           FallbackComponent={ErrorFallback} // Componente a mostrar en error
+           onError={logError}                // Función para loguear el error
+           onReset={() => {
+              // Podrías intentar resetear algún estado global aquí si fuera necesario
+              console.log("Intentando resetear estado desde ErrorBoundary onReset...");
+           }}
+        >
         {/* Contenido Principal */}
         <Content
           style={{ padding: "20px 30px", width: "100%", margin: "0 auto" }}
@@ -115,6 +133,7 @@ function App() {
             </Routes>
           </div>
         </Content>
+        </ErrorBoundary>
       </Layout>
     </Router>
   );
