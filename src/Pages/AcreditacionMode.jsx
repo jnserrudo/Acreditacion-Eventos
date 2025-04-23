@@ -1,6 +1,6 @@
 // src/Pages/AcreditacionMode.js
-import React, { useState, useEffect, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Input,
   Button,
@@ -12,265 +12,254 @@ import {
   Tag,
   Row,
   Col,
-  Descriptions
-} from "antd";
-import { ArrowLeftOutlined,SearchOutlined  } from "@ant-design/icons";
-// Importa la variable "global" simulada para OBTENER los datos iniciales
-import { currentEvents, currentParticipants } from "./EventoABM";
-import toast from 'react-hot-toast'; // Importa toast
+  Descriptions,
+} from 'antd';
+import { ArrowLeftOutlined, SearchOutlined } from '@ant-design/icons';
+import { toast } from 'react-hot-toast';
+// QUITAR: Importación de variables globales simuladas
+// import { currentEvents, currentParticipants } from "./EventoABM";
+
+// Importar Servicios de API
+import { getEventoById } from '../services/evento.services.js'; // Para obtener nombre del evento
+import { getParticipantesByEventoId, acreditarParticipante } from '../services/participante.services.js'; // Para lista y acreditar
+
 const { Title, Text, Paragraph } = Typography;
 
 export const AcreditacionMode = () => {
   const { eventId } = useParams();
-  const navigate = useNavigate(); // <-- Añade useNavigate
+  const navigate = useNavigate();
 
-  const [eventName, setEventName] = useState("");
-  const [dniInput, setDniInput] = useState("");
-  const [searchStatus, setSearchStatus] = useState("idle");
-  const [foundParticipant, setFoundParticipant] = useState(null);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false); // Para búsqueda y acreditación
+  // --- Estados Locales ---
+  const [eventoNombre, setEventoNombre] = useState('');
+  const [participantes, setParticipantes] = useState([]); // Lista REAL de participantes del evento
+  const [loading, setLoading] = useState(true); // Carga inicial de datos
+  const [error, setError] = useState(null); // Error de carga inicial
 
-  // --- Estado Local para los participantes de ESTE evento ---
-  // Se inicializa desde los datos "globales", pero los cambios (acreditación)
-  // solo afectarán a este estado local para mantener la simulación simple.
-  // Si necesitaras que persista entre navegación, habría que actualizar
-  // la variable `currentParticipants` exportada, lo cual es más complejo.
-  const [eventParticipants, setEventParticipants] = useState([]);
+  // Estados para la funcionalidad de búsqueda/acreditación
+  const [dniInput, setDniInput] = useState(''); // Input de búsqueda
+  const [searchStatus, setSearchStatus] = useState('idle'); // Estado de la búsqueda/resultado
+  const [foundParticipant, setFoundParticipant] = useState(null); // Participante encontrado
+  const [isProcessing, setIsProcessing] = useState(false); // Estado para la llamada API de acreditar
 
-  const dniInputRef = useRef(null);
+  const dniInputRef = useRef(null); // Referencia al input para foco
 
+  // --- Función para Cargar Datos Iniciales (Nombre Evento y Lista Participantes) ---
+  const cargarDatosIniciales = useCallback(async () => {
+    const numericEventId = parseInt(eventId);
+    if (isNaN(numericEventId)) {
+      setError("ID de evento inválido.");
+      setLoading(false);
+      toast.error("ID de evento inválido.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      // Llama a ambas APIs en paralelo
+      const [eventoData, participantesData] = await Promise.all([
+        getEventoById(numericEventId),
+        getParticipantesByEventoId(numericEventId)
+      ]);
+      setEventoNombre(eventoData.nombre);
+      setParticipantes(participantesData); // Guarda la lista completa de participantes
+    } catch (err) {
+      console.error("Error al cargar datos para acreditación:", err);
+      const errorMessage = err.message || `Error al cargar datos iniciales.`;
+      setError(errorMessage);
+      toast.error(errorMessage);
+      // Considerar redirección si falla la carga
+      // if (errorMessage.toLowerCase().includes('no encontrado')) {
+      //   navigate('/events', { replace: true });
+      // }
+    } finally {
+      setLoading(false);
+      dniInputRef.current?.focus(); // Foco en el input al terminar
+    }
+  }, [eventId, navigate]);
+
+  // --- Efecto para Cargar Datos al Montar ---
   useEffect(() => {
-    // --- OBTENER DATOS DEL EVENTO Y PARTICIPANTES ---
-    const participantsForEvent = currentParticipants[eventId] || [];
-    const eventDetails = currentEvents.find((ev) => ev.id === eventId); // <-- BUSCAR EVENTO
+    cargarDatosIniciales();
+  }, [cargarDatosIniciales]);
 
-    setEventParticipants(participantsForEvent);
-    setEventName(eventDetails ? eventDetails.name : "Evento Desconocido"); // <-- GUARDAR NOMBRE (con fallback)
-    dniInputRef.current?.focus();
-  }, [eventId]); // Recargar si cambia el eventId (poco probable en este flujo)
-
+  // --- Efecto para Limpiar Búsqueda Automáticamente ---
   useEffect(() => {
     let timer;
+    // Ajusta los delays como prefieras
+    const delay = searchStatus === 'success_accredited' ? 2000 : 4000;
     if (
-      [
-        "success_accredited",
-        "error",
-        "not_found",
-        "already_accredited",
-      ].includes(searchStatus)
+      ['success_accredited', 'not_found', 'already_accredited'].includes(searchStatus)
     ) {
-      timer = setTimeout(resetSearch, 3000);
+      timer = setTimeout(resetSearch, delay); // Limpia después de un tiempo
     }
+    // No incluimos 'error' aquí, ya que el error es de carga inicial
     return () => clearTimeout(timer);
   }, [searchStatus]);
 
-  const handleSearch = async () => {
+  // --- Búsqueda (LOCAL en la lista 'participantes' del estado) ---
+  const handleSearch = () => {
     if (!dniInput.trim()) return;
 
-    setIsProcessing(true);
-    setSearchStatus("searching");
+    setSearchStatus('searching'); // Indica que se está buscando
     setFoundParticipant(null);
-    setErrorMessage("");
+    setIsProcessing(false); // No estamos procesando API aquí
 
-    await new Promise((resolve) => setTimeout(resolve, 250)); // Simula búsqueda
+    const searchTerm = dniInput.trim().toLowerCase(); // Normaliza término de búsqueda
 
-    // Busca en el estado LOCAL de este componente
-    const searchTerm = dniInput.trim(); // Renombrar variable para claridad
-    const participant = eventParticipants.find(
-      (p) => p.dni === searchTerm || p.entryNumber === searchTerm
-    ); // <-- CAMBIO LÓGICA FIND
+    // Busca en la lista de participantes cargada en el estado
+    const participant = participantes.find(
+      (p) => p.dni?.toLowerCase() === searchTerm || p.numeroEntrada?.toLowerCase() === searchTerm
+    );
 
-    if (participant) {
-      setFoundParticipant(participant);
-      // Usar 'accredited' (0 o 1)
-      setSearchStatus(
-        participant.accredited === 1 ? "already_accredited" : "found"
-      ); // <-- CAMBIO a accredited === 1
-    } else {
-      setSearchStatus("not_found");
-    }
-    setIsProcessing(false);
+    // Simula un pequeño delay si quieres feedback visual incluso en búsquedas rápidas
+    setTimeout(() => {
+      if (participant) {
+        setFoundParticipant(participant); // Guarda el encontrado
+        // Define el estado basado en si ya está acreditado (campo 'acreditado' booleano)
+        setSearchStatus(participant.acreditado ? 'already_accredited' : 'found');
+      } else {
+        setSearchStatus('not_found'); // No se encontró
+      }
+    }, 50); // Delay mínimo
   };
 
+  // --- Acreditar (Llamada a la API) ---
   const handleAccredit = async () => {
-    if (!foundParticipant || foundParticipant.accredited || isProcessing)
+    // Verifica que haya un participante encontrado, que no esté ya acreditado y que no se esté procesando
+    if (!foundParticipant || foundParticipant.acreditado || isProcessing) {
       return;
+    }
 
-    setIsProcessing(true);
-    setErrorMessage("");
+    setIsProcessing(true); // Inicia estado de carga para la API
+    const participantId = foundParticipant.id;
+    const participantName = `${foundParticipant.nombre} ${foundParticipant.apellido}`;
 
-    await new Promise((resolve) => setTimeout(resolve, 300)); // Simula acreditación
+    try {
+      // --- LLAMADA API: ACREDITAR PARTICIPANTE ---
+      const participanteActualizado = await acreditarParticipante(participantId);
 
-    // --- ACTUALIZA EL ESTADO LOCAL de este componente ---
-    const updatedParticipants = eventParticipants.map(
-      (p) => (p.id === foundParticipant.id ? { ...p, accredited: 1 } : p) // <-- CAMBIO a accredited: 1
-    );
-    setEventParticipants(updatedParticipants); // Actualiza la lista local
+      // Si la API tuvo éxito:
+      // 1. Actualiza la lista local 'participantes' para consistencia futura
+      setParticipantes(prev =>
+        prev.map(p => (p.id === participantId ? { ...p, acreditado: true } : p))
+      );
+      // 2. Actualiza el 'foundParticipant' para que la UI muestre el estado correcto
+      setFoundParticipant(participanteActualizado);
+      // 3. Cambia el estado para mostrar éxito
+      setSearchStatus('success_accredited');
+      toast.success(`¡${participantName} acreditado!`);
 
-    // Actualiza el participante encontrado para mostrar el estado correcto
-    const newlyAccredited = updatedParticipants.find(
-      (p) => p.id === foundParticipant.id
-    );
-    setFoundParticipant(newlyAccredited);
-
-    setSearchStatus("success_accredited");
-    setIsProcessing(false);
-
-    toast.success(
-      `Participante "${newlyAccredited.name} ${newlyAccredited.lastName}" acreditado.`,
-      { duration: 3000 }
-    );
-    // Opcional: Actualizar también la variable "global" (más complejo)
-    // currentParticipants[eventId] = updatedParticipants;
+    } catch (apiError) {
+      // Si la API falla
+      console.error("Error al acreditar vía API:", apiError);
+      toast.error(apiError.message || 'No se pudo acreditar al participante.');
+      // Podrías volver al estado 'found' para permitir reintentar, o dejarlo como está
+      // setSearchStatus('found');
+    } finally {
+      setIsProcessing(false); // Finaliza estado de carga de la API
+    }
   };
 
+  // --- Resetear Búsqueda ---
   const resetSearch = () => {
-    setDniInput("");
-    setSearchStatus("idle");
+    setDniInput('');
+    setSearchStatus('idle');
     setFoundParticipant(null);
-    setErrorMessage("");
-    dniInputRef.current?.focus();
+    setIsProcessing(false); // Asegura resetear estado de procesamiento
+    dniInputRef.current?.focus(); // Foco de nuevo en el input
   };
 
+  // --- Renderizado del Resultado de Búsqueda/Acreditación ---
   const renderResult = () => {
-    // La lógica interna de los switch cases es la misma
-    // Solo ajustamos un poco el contenedor o los textos si es necesario
+    // El switch case permanece igual, usa los estados actualizados
     switch (searchStatus) {
-      case "searching":
-        return (
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Spin tip="Buscando..." size="large" />
-          </div>
-        );
-      case "error":
-        return (
-          <Alert
-            message="Error Inesperado"
-            description={errorMessage}
-            type="error"
-            showIcon
-            closable
-            onClose={resetSearch}
-          />
-        );
-      case "not_found":
-        return (
-          <Alert
-            message="No Encontrado"
-            description={`No se encontró participante con DNI o Nro. Entrada "${dniInput}" para este evento.`}
-            type="warning"
-            showIcon
-          />
-        );
-      case "already_accredited":
+      case 'searching':
+        return <div style={{ textAlign: 'center', padding: '40px 0' }}><Spin tip="Buscando..." /></div>;
+      case 'not_found':
+        return <Alert message="No Encontrado" description={`No se encontró participante con DNI o Nro. Entrada "${dniInput}" para este evento.`} type="warning" showIcon />;
+      case 'already_accredited':
         return (
           <Alert
             message="Participante Ya Acreditado"
-            description={
-              <Text>
-                <strong>
-                  {foundParticipant?.name} {foundParticipant?.lastName}
-                </strong>{" "}
-                (DNI: {foundParticipant?.dni} / Entrada:{" "}
-                {foundParticipant?.entryNumber}) ya fue acreditado.
-              </Text>
-            }
-            type="info"
-            showIcon
-          />
+            description={<Text><strong>{foundParticipant?.nombre} {foundParticipant?.apellido}</strong> (DNI: {foundParticipant?.dni} / Entrada: {foundParticipant?.numeroEntrada}) ya fue acreditado.</Text>}
+            type="info" showIcon/>
         );
-      case "success_accredited":
+      case 'success_accredited': // Muestra éxito después de acreditar
         return (
           <Alert
             message="¡Acreditado Correctamente!"
-            description={
-              <Text strong style={{ fontSize: "1.1em" }}>
-                <strong>
-                  {foundParticipant?.name} {foundParticipant?.lastName}
-                </strong>{" "}
-                (DNI: {foundParticipant?.dni} / Entrada:{" "}
-                {foundParticipant?.entryNumber})
-              </Text>
-            }
-            type="success"
-            showIcon
-          />
+            description={<Text strong style={{ fontSize: '1.1em' }}><strong>{foundParticipant?.nombre} {foundParticipant?.apellido}</strong> (DNI: {foundParticipant?.dni} / Entrada: {foundParticipant?.numeroEntrada})</Text>}
+            type="success" showIcon />
         );
-      case "found":
-        // Usamos una Card para destacar al encontrado
+      case 'found': // Muestra participante encontrado y botón para acreditar
         return (
-          <Card
-            title={
-              <Title level={4} style={{ margin: 0 }}>
-                Participante Encontrado
-              </Title>
-            }
-            bordered={true}
-            style={{ borderColor: "#1890ff" /* Azul AntD */ }}
-          >
-            <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Card title={<Title level={4} style={{ margin: 0 }}>Participante Encontrado</Title>} bordered style={{ borderColor: '#1890ff' }}>
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <Descriptions column={1} size="small">
-                <Descriptions.Item label="Nombre">
-                  {foundParticipant?.name} {foundParticipant?.lastName}
-                </Descriptions.Item>
-                <Descriptions.Item label="DNI">
-                  {foundParticipant?.dni}
-                </Descriptions.Item>
-                <Descriptions.Item label="Nro. Entrada">
-                  {foundParticipant?.entryNumber}
-                </Descriptions.Item>
-                <Descriptions.Item label="Estado">
-                  <Tag color="volcano">PENDIENTE ACREDITACIÓN</Tag>
-                </Descriptions.Item>
+                <Descriptions.Item label="Nombre">{foundParticipant?.nombre} {foundParticipant?.apellido}</Descriptions.Item>
+                <Descriptions.Item label="DNI">{foundParticipant?.dni}</Descriptions.Item>
+                <Descriptions.Item label="Nro. Entrada">{foundParticipant?.numeroEntrada}</Descriptions.Item>
+                {/* Opcional: Mostrar otros datos si son útiles aquí */}
+                {foundParticipant?.medioPago && <Descriptions.Item label="Medio Pago">{foundParticipant.medioPago}</Descriptions.Item>}
+                {foundParticipant?.rubro && <Descriptions.Item label="Rubro">{foundParticipant.rubro}</Descriptions.Item>}
+                <Descriptions.Item label="Estado"><Tag color="volcano">PENDIENTE ACREDITACIÓN</Tag></Descriptions.Item>
               </Descriptions>
               <Button
                 type="primary"
-                onClick={handleAccredit}
-                loading={isProcessing}
-                disabled={isProcessing}
-                size="large"
-                block // Ocupa todo el ancho de la Card
-              >
-                {isProcessing ? "Acreditando..." : "Confirmar Acreditación"}
+                onClick={handleAccredit} // Llama a la función que llama a la API
+                loading={isProcessing} // Muestra loading mientras se acredita
+                disabled={isProcessing} // Deshabilita mientras se acredita
+                size="large" block>
+                {isProcessing ? 'Acreditando...' : 'Confirmar Acreditación'}
               </Button>
             </Space>
           </Card>
         );
-      case "idle":
+      case 'idle':
       default:
-        return (
-          <Paragraph
-            style={{ color: "#888", textAlign: "center", padding: "40px 0" }}
-          >
-            Ingrese DNI o Nro. de Entrada para buscar.
-          </Paragraph>
-        );
+        return <Paragraph style={{ color: '#888', textAlign: 'center', padding: '40px 0' }}>Ingrese DNI o Nro. de Entrada para buscar.</Paragraph>;
     }
   };
+
+  // --- Renderizado Principal del Componente ---
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
+        <Spin size="large" tip="Cargando modo acreditación..." />
+      </div>
+    );
+  }
+
+  // Si hubo error cargando datos iniciales
+  if (error) {
+    return (
+      <div style={{ padding: '20px' }}>
+        {/* Permite volver incluso si hay error */}
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/events/${eventId}`)} style={{ marginBottom: '20px' }}>
+            Volver al Detalle
+        </Button>
+        <Alert message="Error de Carga" description={error} type="error" showIcon style={{ marginTop: '20px' }} />
+      </div>
+    );
+  }
+
   return (
-    // No necesitamos el div con maxWidth y margin auto aquí, ya que App.js lo proporciona
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      {/* Fila para Título y Botón Volver */}
+      {/* Encabezado */}
       <Row justify="space-between" align="middle" wrap gutter={[0, 16]}>
         <Col>
-          <Title level={2} style={{ margin: 0 }}>
-            Modo Acreditación
-          </Title>
-          <Text type="secondary">Evento: {eventName}</Text>
+          <Title level={2} style={{ margin: 0 }}>Modo Acreditación</Title>
+          <Text type="secondary">Evento: {eventoNombre}</Text>
         </Col>
         <Col>
-          {/* Usar navigate en lugar de Link para que el botón no sea un enlace azul */}
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/events/${eventId}`)}
-          >
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/events/${eventId}`)}>
             Volver al Detalle
           </Button>
         </Col>
       </Row>
 
-      {/* Card para la Búsqueda */}
+      {/* Card de Búsqueda */}
       <Card>
         <Title level={4}>Buscar Asistente</Title>
         <Space.Compact style={{ width: "100%" }}>
@@ -279,41 +268,34 @@ export const AcreditacionMode = () => {
             placeholder="Ingrese DNI o Nro. de Entrada"
             value={dniInput}
             onChange={(e) => setDniInput(e.target.value)}
-            onPressEnter={handleSearch}
-            disabled={
-              isProcessing ||
-              ["found", "success_accredited"].includes(searchStatus)
-            } // Deshabilitar si ya se encontró/acreditó hasta limpiar
+            onPressEnter={handleSearch} // Busca al presionar Enter
+            // Deshabilitar input si se está procesando API o si ya se mostró un resultado final
+            disabled={isProcessing || ['success_accredited', 'already_accredited'].includes(searchStatus)}
             size="large"
-            allowClear // Permite limpiar el input fácilmente
+            allowClear
             autoFocus
           />
           <Button
             type="primary"
             icon={<SearchOutlined />}
             onClick={handleSearch}
-            loading={isProcessing && searchStatus === "searching"}
-            disabled={isProcessing || !dniInput.trim()}
+            loading={searchStatus === 'searching'} // Loading solo mientras busca localmente
+            disabled={isProcessing || !dniInput.trim()} // Deshabilitado si procesa API o input vacío
             size="large"
           >
             Buscar
           </Button>
         </Space.Compact>
-        {/* Botón Limpiar más visible */}
+        {/* Botón Limpiar */}
         {searchStatus !== "idle" && (
-          <Button
-            type="link"
-            onClick={resetSearch}
-            disabled={isProcessing && searchStatus !== "searching"}
-            style={{ marginTop: "10px" }}
-          >
+          <Button type="link" onClick={resetSearch} disabled={isProcessing} style={{ marginTop: "10px" }}>
             Limpiar / Nueva Búsqueda
           </Button>
         )}
       </Card>
 
-      {/* Área de Resultados (puede ser otra Card o simplemente un div) */}
-      <Card title="Resultado de la Búsqueda" style={{ minHeight: "200px" }}>
+      {/* Card de Resultados */}
+      <Card title="Resultado de la Búsqueda" style={{ minHeight: "200px", background: '#f9f9f9' }}>
         {renderResult()}
       </Card>
     </Space>

@@ -17,3 +17,68 @@ acreditacion : puede ser una opcion del evento, el modo acreditar, mostraria un 
 poner el dni o nro_entrada de la persona, luego habria otro popup encima donde se mostraria
 el resultado, q serian 2, uno donde no encontro a la persona, otro donde mostraria el nombre y el apellido
 y daria la opcion de "acreditar" o cancelar,si se acredita actualizaria el registro y pondria a acreditado igual 1    
+
+
+
+
+/**                                // <-- Inicio del bloque JSDoc
+ * Obtiene todos los participantes de un evento específico. // <-- Descripción corta de la función
+ *                                // <-- Línea en blanco (opcional, para separar)
+ * @param {number|string} eventoId El ID del evento. // <-- Etiqueta @param: Describe un parámetro
+ *                                //      {number|string}: Indica el tipo esperado (puede ser número o string)
+ *                                //      eventoId: Nombre del parámetro
+ *                                //      El ID del evento.: Descripción del parámetro
+ * @returns {Promise<Array>} Una promesa que resuelve a un array de participantes. // <-- Etiqueta @returns: Describe lo que devuelve
+ *                                //      {Promise<Array>}: Indica el tipo de retorno (una Promesa que contiene un Array)
+ *                                //      Una promesa...: Descripción del valor de retorno
+ * @throws {Error} Si la respuesta de la red no es OK. // <-- Etiqueta @throws: Describe posibles errores
+ *                                //      {Error}: Tipo de error que puede lanzar (puede ser más específico)
+ *                                //      Si la respuesta...: Descripción de cuándo se lanza el error
+ */                               // <-- Fin del bloque JSDoc
+export const getParticipantesByEventoId = async (eventoId) => { // <-- La función documentada
+  // ... código de la función ...
+};
+
+
+/---------------------------------------------------------------------------------------------------------/
+
+¡Ah, excelente punto! Aquí es donde la lógica del || (OR) en config.js entra en juego y por qué el archivo .env local sí tiene un propósito, aunque diferente al de producción.
+Vamos a aclararlo:
+Tu archivo .env LOCAL:
+Propósito: Este archivo es leído únicamente por tu proceso de desarrollo local (cuando corres npm run dev o yarn dev). NO se sube a Render (debe estar en tu .gitignore).
+Contenido Actual: Tienes VITE_API_URL=https://acreditacion-eventos-backend.onrender.com/api.
+Consecuencia: Cuando corres npm run dev en tu máquina, import.meta.env.VITE_API_URL tendrá ese valor (la URL de producción). Por lo tanto, tu config.js hará que entorno sea la 
+URL de producción. ¡Tu frontend local estará hablando con tu backend desplegado en Render!
+Variables de Entorno en RENDER:
+Propósito: Estas variables son leídas por Render cuando construye (npm run build) y ejecuta tu aplicación en producción.
+Configuración: Correctamente, configurarás VITE_API_URL en Render con el valor https://acreditacion-eventos-backend.onrender.com/api.
+Consecuencia: Cuando Render haga el build, reemplazará import.meta.env.VITE_API_URL con la URL de producción, y tu aplicación desplegada funcionará correctamente.
+El quid de la cuestión y tu confusión:
+¿Es "al vicio" tener VITE_API_URL en tu .env local apuntando a producción? Sí, en el sentido de que probablemente no es lo que quieres durante el desarrollo local. Normalmente, 
+mientras desarrollas, quieres que tu frontend local (ej. localhost:5173) hable con tu backend local (ej. localhost:3001).
+¿Cómo lograr que el local use el local y producción use producción sin tocar config.js? Aprovechando el fallback || LOCAL_API_URL:
+Para Desarrollo Local:
+Abre tu archivo .env local.
+Borra o comenta la línea:
+# VITE_API_URL=https://acreditacion-eventos-backend.onrender.com/api
+Use code with caution.
+Dotenv
+Ahora, cuando corras npm run dev, import.meta.env.VITE_API_URL será undefined.
+Tu config.js ejecutará export const entorno = undefined || 'http://localhost:3001/api';, por lo que entorno será 'http://localhost:3001/api'.
+¡Tu frontend local hablará con tu backend local!
+Para Producción:
+Mantén la variable de entorno VITE_API_URL configurada en Render con el valor https://acreditacion-eventos-backend.onrender.com/api.
+Cuando Render construya tu app, import.meta.env.VITE_API_URL tendrá ese valor.
+Tu config.js ejecutará export const entorno = 'https://...' || 'http://localhost:3001/api';, por lo que entorno será 'https://...'.
+¡Tu frontend en producción hablará con tu backend en producción!
+Conclusión:
+El archivo .env local no es "al vicio", es tu herramienta para configurar el entorno de desarrollo local. La confusión vino porque tenías la URL de producción dentro de tu 
+configuración local.
+Acción recomendada: Comenta o elimina la línea VITE_API_URL=... de tu archivo .env local para que tu desarrollo local apunte al backend local (localhost:3001/api). 
+Mantén la variable configurada correctamente en Render para producción. ¡Así no tendrás que tocar config.js nunca más para esto!
+
+
+//----------
+ENTONCES SI QUIERO QUE DESDE MI FRONT LOCAL APUNTE AL BACK DE PRODUCCION DEBO DESCOMENTAR LA LINEA VITE_API_URL=... DE MI .ENV LOCAL
+SI QUIERO VER LOS LOGS DEL BACKEND LOCAL DEBO  COMENTAR ESA LINEA DEL .ENV LOCAL
+SI BIEN EN AMBOS CASOS APUNTAN A LA MISMA BASE DE DATOS, EL COMENTAR Y DESCOMENTAR ME PERMITIRA VER LOS LOGS EN MI BACKEND LOCAL O PRODUCCION

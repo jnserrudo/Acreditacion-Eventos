@@ -70,16 +70,16 @@ export const EventList = ({ events = [], onEdit, onDelete }) => {
         >
           {/* Contenido principal del item */}
           <List.Item.Meta
-            title={<Link to={`/events/${event.id}`} style={{ fontSize: '1.1em' }}>{event.name || 'Evento sin nombre'}</Link>}
+            title={<Link to={`/events/${event.id}`} style={{ fontSize: '1.1em' }}>{event.nombre || 'Evento sin nombre'}</Link>}
             // Usamos description para más detalles, se verá debajo del título
             description={
               <Space direction="vertical" size="small" style={{width: '100%'}}>
                  <Text type="secondary">
-                   <Tag>{formatDate(event.date)}</Tag> {event.location || 'Lugar no especificado'}
+                   <Tag>{formatDate(event.fecha)}</Tag> {event.lugar || 'Lugar no especificado'}
                  </Text>
-                 {event.description && (
+                 {event.descripcion && (
                     <Paragraph ellipsis={{ rows: 2, expandable: false }} type="secondary">
-                        {event.description}
+                        {event.descripcion}
                     </Paragraph>
                  )}
               </Space>

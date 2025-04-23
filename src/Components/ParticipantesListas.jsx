@@ -1,111 +1,121 @@
-// src/Components/ParticipantList.js
-import React from 'react';
-import { Table, Tag, Tooltip } from 'antd'; // Añadido Tooltip
+// src/Components/ParticipantesListas.js
+import React from "react";
+import { Table, Tag, Tooltip } from "antd";
 
-export const ParticipantList = ({ participants = [] }) => {
-
+export const ParticipantesListas = ({ participants = [] }) => {
   const columns = [
+    // --- Columnas existentes ---
     {
-      title: 'Nombre',
-      dataIndex: 'name',
-      key: 'name',
-      sorter: (a, b) => a.name.localeCompare(b.name),
-      // fixed: 'left', // Descomentar si quieres fijar esta columna al hacer scroll horizontal
+      title: "Nombre",
+      dataIndex: "nombre",
+      key: "nombre",
+      sorter: (a, b) => a.nombre.localeCompare(b.nombre),
     },
     {
-      title: 'Apellido',
-      dataIndex: 'lastName',
-      key: 'lastName',
-      sorter: (a, b) => (a.lastName || '').localeCompare(b.lastName || ''),
-      // fixed: 'left', // Descomentar si quieres fijar esta columna al hacer scroll horizontal
+      title: "Apellido",
+      dataIndex: "apellido",
+      key: "apellido",
+      sorter: (a, b) => (a.apellido || "").localeCompare(b.apellido || ""),
     },
+    { title: "DNI", dataIndex: "dni", key: "dni" },
+    { title: "Nro Entrada", dataIndex: "numeroEntrada", key: "numeroEntrada" }, // Corregido dataIndex a camelCase
     {
-      title: 'DNI',
-      dataIndex: 'dni',
-      key: 'dni',
-    },
-    {
-      title: 'Nro. Entrada',
-      dataIndex: 'entryNumber',
-      key: 'entryNumber',
-    },
-    {
-      title: 'Estado', // Título más corto
-      dataIndex: 'accredited',
-      key: 'accredited',
-      align: 'center', // Centrar contenido
-      width: 120, // Ancho fijo para esta columna puede ayudar
-      render: (accredited) => (
-        <Tag color={accredited === 1 ? 'green' : 'volcano'} style={{ margin: 'auto' }}>
-          {accredited === 1 ? 'ACREDITADO' : 'PENDIENTE'}
+      title: "Estado",
+      dataIndex: "acreditado",
+      key: "acreditado",
+      align: "center",
+      width: 120,
+      render: (
+        acreditado // Usa el boolean 'acreditado'
+      ) => (
+        <Tag
+          color={acreditado ? "green" : "volcano"}
+          style={{ margin: "auto" }}
+        >
+          {acreditado ? "ACREDITADO" : "PENDIENTE"}
         </Tag>
       ),
+      // Ajusta filtros para boolean
       filters: [
-        { text: 'Acreditado', value: 1 },
-        { text: 'Pendiente', value: 0 },
+        { text: "Acreditado", value: true },
+        { text: "Pendiente", value: false },
       ],
-      onFilter: (value, record) => record.accredited === value,
-    },
-    // --- COLUMNAS OPCIONALES OCULTAS EN MÓVIL ---
-    {
-      title: 'Teléfono',
-      dataIndex: 'phone',
-      key: 'phone',
-      render: (phone) => phone || '-',
-      // responsive: ['md'] -> Oculta en pantallas < 768px (sm y xs)
-      responsive: ['md'],
+      onFilter: (value, record) => record.acreditado === value,
     },
     {
-      title: 'Correo', // Título más corto
-      dataIndex: 'email',
-      key: 'email',
-      render: (email) => email ? (
-         // Tooltip para correos largos
-         <Tooltip title={email}>
-             <span style={{ display: 'inline-block', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                 {email}
-             </span>
-         </Tooltip>
-      ) : '-',
-      // responsive: ['lg'] -> Oculta en pantallas < 992px (md, sm, xs) - Más agresivo
-      responsive: ['lg'],
+      title: "Teléfono",
+      dataIndex: "telefono",
+      key: "telefono",
+      render: (tel) => tel || "-",
+      responsive: ["md"],
     },
-    // --- FIN COLUMNAS OPCIONALES ---
-    // Podrías añadir una columna de acciones aquí si fuera necesario (ej: des-acreditar, editar participante)
-    // {
-    //   title: 'Acciones',
-    //   key: 'actions',
-    //   align: 'center',
-    //   fixed: 'right', // Fija la columna de acciones a la derecha
-    //   render: (_, record) => (
-    //     <Space>
-    //       {/* Botones de acción para cada participante */}
-    //     </Space>
-    //   ),
-    // }
+    {
+      title: "Correo",
+      dataIndex: "correo",
+      key: "correo",
+      render: (correo) =>
+        correo ? (
+          <Tooltip title={correo}>
+            <span
+              style={
+                {
+                  /*...*/
+                }
+              }
+            >
+              {correo}
+            </span>
+          </Tooltip>
+        ) : (
+          "-"
+        ),
+      responsive: ["lg"],
+    },
+
+    // --- NUEVAS COLUMNAS ---
+    {
+      title: "Medio Pago",
+      dataIndex: "medioPago", // Coincide con el modelo Prisma
+      key: "medioPago",
+      render: (medio) => medio || "-", // Muestra '-' si es nulo/vacío
+      // Podrías hacerla responsive también si la tabla se vuelve muy ancha
+      responsive: ["lg"], // Ejemplo: ocultar en móvil y tablet pequeña
+      // Podrías añadir filtros si quieres filtrar por medio de pago
+      // filters: [...],
+      // onFilter: (...) => ...,
+    },
+    {
+      title: "Rubro",
+      dataIndex: "rubro", // Coincide con el modelo Prisma
+      key: "rubro",
+      render: (rubro) => rubro || "-",
+      responsive: ["lg"], // Ejemplo
+      // filters: [...],
+      // onFilter: (...) => ...,
+    },
+    // --- FIN NUEVAS COLUMNAS ---
+
+    // --- Columna de Acciones (Opcional) ---
+    // { title: 'Acciones', key: 'actions', align: 'center', fixed: 'right', render: (...) => (...) }
   ];
 
   return (
     <Table
       columns={columns}
-      dataSource={participants}
+      dataSource={participants} // Ya recibe los datos completos de la API
       rowKey="id"
       pagination={{
-        pageSize: 10, // Reducido para móvil puede ser mejor
+        pageSize: 10,
         showSizeChanger: true,
-        pageSizeOptions: ['10', '20', '50', '100'],
+        pageSizeOptions: ["10", "20", "50", "100"],
         showTotal: (total, range) => `${range[0]}-${range[1]} de ${total}`,
         hideOnSinglePage: true,
-        size: 'small', // Paginación más compacta
+        size: "small",
       }}
-      locale={{ emptyText: 'No hay participantes cargados para este evento.' }}
-      // style={{ marginTop: '20px' }} // QUITADO - Dejar que el contenedor padre maneje el margen
-      // --- CLAVE PARA RESPONSIVIDAD DE TABLA ---
-      scroll={{ x: 'max-content' }} // Habilita scroll horizontal
-      // -------------------------------------------
-      // bordered // Quitado borde para un look más limpio (opcional)
-      size="small" // Tabla más compacta
-      className="responsive-participant-table" // Clase CSS opcional para estilos específicos
+      locale={{ emptyText: "No hay participantes cargados." }}
+      scroll={{ x: "max-content" }}
+      size="small"
+      className="responsive-participant-table"
     />
   );
 };

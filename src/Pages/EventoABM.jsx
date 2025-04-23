@@ -1,181 +1,233 @@
 // src/Pages/EventoABM.js
-import React, { useState } from 'react';
-import { initialEvents, initialParticipants } from '../mockData'; // Importa los datos iniciales
-import {EventList} from '../Components/EventList';
-import {EventForm} from '../Components/EventForm';
-import { Button, Modal, Typography, message as antdMessage, Form,Space,Card } from 'antd';
+import React, { useState, useEffect } from 'react';
+// QUITAR: import { initialEvents, initialParticipants } from '../mockData';
+import { EventList } from '../Components/EventList'; // Ajusta la ruta si es necesario
+import { EventForm } from '../Components/EventForm'; // Ajusta la ruta si es necesario
+import { Button, Modal, Typography, Form, Space, Spin, Alert, Card } from 'antd'; // Añadido Spin, Alert, Card
 import { PlusOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
-import toast from 'react-hot-toast'; // Importa toast
+import dayjs from 'dayjs'; // Necesario para manejar fechas en el formulario
+import { toast } from 'react-hot-toast'; // Para notificaciones
+import {
+    getAllEventos,
+    createEvento,
+    updateEvento,
+    deleteEvento
+} from '../services/evento.services.js'; // Importa los servicios de API
 
 const { Title } = Typography;
 
-// --- Estado Global Simulado (Muy Básico) ---
-// Estas variables persistirán mientras la app esté abierta en la pestaña.
-// NO ES UNA BUENA PRÁCTICA PARA APPS REALES, sólo para este prototipo autocontenido.
-let currentEvents = [...initialEvents];
-let currentParticipants = JSON.parse(JSON.stringify(initialParticipants)); // Copia profunda inicial
+// YA NO NECESITAMOS LAS VARIABLES GLOBALES SIMULADAS (currentEvents, currentParticipants)
+// NI LAS FUNCIONES updateGlobal...
 
 export const EventoABM = () => {
-  // El estado local refleja el estado "global" simulado
-  const [events, setEvents] = useState(currentEvents);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false); // Para el loading del botón OK del modal
-  const [editingEvent, setEditingEvent] = useState(null);
+  // --- Estados Locales ---
+  const [eventos, setEventos] = useState([]); // Estado para la lista de eventos REAL
+  const [loading, setLoading] = useState(true); // Estado de carga inicial de la lista
+  const [error, setError] = useState(null); // Estado para errores de carga o API
+  const [isModalVisible, setIsModalVisible] = useState(false); // Visibilidad del modal
+  const [isSubmitting, setIsSubmitting] = useState(false); // Loading para el botón OK del modal
+  const [editingEvent, setEditingEvent] = useState(null); // Guarda el evento que se está editando
+  const [form] = Form.useForm(); // Instancia del formulario de AntD
 
-  const [form] = Form.useForm();
+  // --- Cargar Eventos desde la API al Montar ---
+  useEffect(() => {
+    const fetchEventos = async () => {
+      setLoading(true); // Inicia la carga
+      setError(null); // Limpia errores previos
+      try {
+        const data = await getAllEventos(); // Llama al servicio
+        // Asegúrate que el nombre de campo coincida con tu modelo Prisma (nombre, fecha, etc.)
+        setEventos(data); // Actualiza el estado con los datos de la API
+      } catch (err) {
+        console.error("Error al cargar eventos:", err);
+        const errorMessage = err.message || 'Error al cargar los eventos.';
+        setError(errorMessage); // Guarda el mensaje de error
+        toast.error(errorMessage); // Muestra notificación de error
+      } finally {
+        setLoading(false); // Finaliza la carga
+      }
+    };
+    fetchEventos(); // Ejecuta la carga
+  }, []); // El array vacío [] significa que se ejecuta solo una vez cuando el componente se monta
 
-  // --- Funciones para manipular el estado "global" simulado ---
-  const updateGlobalEvents = (newEvents) => {
-    currentEvents = newEvents;
-    setEvents(currentEvents); // Actualiza estado local para re-renderizar
-  };
-
-  const updateGlobalParticipants = (newParticipantsData) => {
-      currentParticipants = newParticipantsData;
-      // No necesita re-renderizar este componente, pero sí EventoDetalle
-  };
-
-  // --- Manejo del Modal ---
+  // --- Manejo del Modal (Sin cambios en la lógica de abrir/cerrar) ---
   const showAddModal = () => {
-    setEditingEvent(null);
-    form.resetFields();
+    setEditingEvent(null); // No estamos editando
+    form.resetFields(); // Limpia campos del formulario
     setIsModalVisible(true);
   };
 
-  const showEditModal = (event) => {
-    setEditingEvent(event);
+  const showEditModal = (evento) => {
+    setEditingEvent(evento); // Guarda el evento a editar
+    // Llena el formulario con los datos del evento
     form.setFieldsValue({
-      name: event.name,
-      date: event.date ? dayjs(event.date) : null,
-      location: event.location,
-      description: event.description,
+      nombre: evento.nombre,
+      // Prisma devuelve fechas como strings ISO, dayjs puede parsearlas
+      fecha: evento.fecha ? dayjs(evento.fecha) : null,
+      lugar: evento.lugar,
+      descripcion: evento.descripcion,
     });
     setIsModalVisible(true);
   };
 
   const handleCancelModal = () => {
     setIsModalVisible(false);
-    setEditingEvent(null);
+    setEditingEvent(null); // Limpia el evento en edición
     form.resetFields();
   };
 
+  // --- Lógica del Botón OK del Modal (Llama a la API) ---
   const handleOkModal = async () => {
     try {
+      // Valida los campos del formulario de AntD
       const values = await form.validateFields();
-      setIsSubmitting(true); // Inicia loading
+      setIsSubmitting(true); // Activa el loading del botón OK
+      setError(null); // Limpia errores previos
 
-      // Simula un pequeño delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      const eventData = {
-        name: values.name,
-        date: values.date ? values.date.format('YYYY-MM-DD') : null, // Formato consistente
-        location: values.location,
-        description: values.description || null,
+      console.log("values", values);
+      // Prepara los datos para enviar a la API
+      const eventoData = {
+        nombre: values.name,
+        // Envía la fecha en formato ISO string o null
+        fecha: values.date ? values.date.toISOString() : null,
+        lugar: values.location,
+        descripcion: values.description,
       };
 
-      if (editingEvent) {
-        // --- SIMULACIÓN ACTUALIZAR ---
-        const updatedEvents = currentEvents.map(ev =>
-          ev.id === editingEvent.id ? { ...ev, ...eventData } : ev
-        );
-        updateGlobalEvents(updatedEvents); // Actualiza "global" y local
-        toast.success(`Evento "${eventData.name}" actualizado.`);
-      } else {
-        // --- SIMULACIÓN CREAR ---
-        const newEvent = {
-          ...eventData,
-          id: `evt-${Date.now()}`, // ID simple
-        };
-        const updatedEvents = [...currentEvents, newEvent];
-        updateGlobalEvents(updatedEvents); // Actualiza "global" y local
-        // Inicializa participantes para el nuevo evento en la data "global"
-        updateGlobalParticipants({...currentParticipants, [newEvent.id]: []});
-        toast.success(`Evento "${newEvent.name}" creado.`);
+      try {
+        if (editingEvent) {
+          // --- LLAMADA API: ACTUALIZAR EVENTO ---
+          const eventoActualizado = await updateEvento(editingEvent.id, eventoData);
+          // Actualiza la lista local reemplazando el evento antiguo por el nuevo
+          setEventos(prevEventos =>
+            prevEventos.map(ev => (ev.id === editingEvent.id ? eventoActualizado : ev))
+          );
+          toast.success(`Evento "${eventoActualizado.nombre}" actualizado con éxito.`);
+        } else {
+          // --- LLAMADA API: CREAR EVENTO ---
+          const nuevoEvento = await createEvento(eventoData);
+          // Añade el nuevo evento al principio de la lista local
+          setEventos(prevEventos => [nuevoEvento, ...prevEventos]);
+          toast.success(`Evento "${nuevoEvento.nombre}" creado con éxito.`);
+        }
+        // Si la llamada API fue exitosa: cierra modal y limpia
+        setIsModalVisible(false);
+        setEditingEvent(null);
+        form.resetFields();
+      } catch (apiError) {
+        // Si la llamada a la API falla (crear o actualizar)
+        console.error("Error al guardar evento en API:", apiError);
+        const errorMessage = apiError.message || 'Error al guardar el evento.';
+        setError(errorMessage); // Guarda el error para posible visualización
+        toast.error(errorMessage); // Muestra notificación de error
+        // No cerramos el modal para que el usuario pueda intentar de nuevo o corregir
       }
 
-      setIsModalVisible(false);
-      setEditingEvent(null);
-      form.resetFields();
-
-    } catch (errInfo) {
-      console.log('Validate Failed:', errInfo);
-       if (errInfo.name !== 'ValidateError') {
-           toast.error('Error simulado al guardar.');
-       }
+    } catch (validationError) {
+      // AntD Form maneja la visualización de errores de validación
+      console.log('Error de validación del formulario:', validationError);
+      // No es necesario hacer toast aquí, AntD ya marca los campos
     } finally {
-        setIsSubmitting(false); // Finaliza loading
+      setIsSubmitting(false); // Desactiva el loading del botón OK
     }
   };
 
-  // --- Manejo de Eliminación ---
-  const handleDeleteEvent = (eventId) => {
+  // --- Manejo de Eliminación (Llama a la API) ---
+  const handleDeleteEvent = (eventoId, eventoNombre) => {
      Modal.confirm({
-        title: '¿Eliminar este evento? ',
-        content: 'Se eliminará el evento y sus participantes (solo en esta sesión).',
+        // Usa el nombre real del evento en el título
+        title: `¿Eliminar el evento "${eventoNombre || 'este evento'}"?`,
+        content: 'Esta acción eliminará el evento y todos sus participantes asociados (si aplica según la configuración del backend). ¿Continuar?',
         okText: 'Sí, eliminar',
         okType: 'danger',
         cancelText: 'No',
+        // onOk debe ser una función que puede ser async
         onOk: async () => {
-            setIsSubmitting(true); // Usar para mostrar feedback si es necesario
-            await new Promise(resolve => setTimeout(resolve, 300)); // Simula delay
-            const eventToDelete = currentEvents.find(ev => ev.id === eventId);
-            const updatedEvents = currentEvents.filter(ev => ev.id !== eventId);
-            updateGlobalEvents(updatedEvents); // Actualiza "global" y local
-            // Elimina participantes asociados del estado "global"
-            const newParticipants = {...currentParticipants};
-            delete newParticipants[eventId];
-            updateGlobalParticipants(newParticipants);
-
-            toast.success(`Evento "${eventToDelete?.name || eventId}" eliminado.`);
-            setIsSubmitting(false);
+            const toastId = toast.loading('Eliminando evento...'); // Muestra toast de carga
+            try {
+                // --- LLAMADA API: ELIMINAR EVENTO ---
+                await deleteEvento(eventoId);
+                // Si la API no dio error, actualiza el estado local
+                setEventos(prevEventos => prevEventos.filter(ev => ev.id !== eventoId));
+                toast.success(`Evento "${eventoNombre || `ID ${eventoId}`}" eliminado.`, { id: toastId });
+            } catch (apiError) {
+                // Si la API da error al eliminar
+                console.error("Error al eliminar evento:", apiError);
+                const errorMessage = apiError.message || 'No se pudo eliminar el evento.';
+                toast.error(errorMessage, { id: toastId });
+            }
+        },
+        onCancel() {
+          console.log('Eliminación cancelada');
         },
      });
   };
 
+  // --- Renderizado ---
+  if (loading) {
+    // Muestra un spinner centrado mientras carga la lista inicial
+    return (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
+            <Spin size="large" tip="Cargando eventos..." />
+        </div>
+    );
+  }
+
   return (
-    <>
-     {/* Usa Fragment para evitar div extra innecesario */}
-     <Space direction="vertical" size="large" style={{ width: '100%' }}> {/* Envuelve en Space vertical */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-      <Title level={2}>Gestión de Eventos</Title>
-      <Button
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={showAddModal}
-        style={{ marginBottom: '20px' }}
-      >
-        Crear Nuevo Evento
-      </Button>
-    </div>
-    {/* Lista de Eventos (la tabla se verá mejor en el fondo blanco) */}
-        {/* Opcional: Envolver la lista/tabla en una Card para darle un borde */}
-        <Card title="Eventos Programados" size="small">
+    // Usa Fragment o Space como contenedor principal
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      {/* Encabezado con Título y Botón Crear */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+        <Title level={2} style={{ margin: 0 }}>Gestión de Eventos</Title>
+        <Button type="primary" icon={<PlusOutlined />} onClick={showAddModal}>
+          Crear Nuevo Evento
+        </Button>
+      </div>
+
+      {/* Muestra Alerta de Error si falló la carga inicial */}
+      {error && !loading && (
+          <Alert
+            message="Error al cargar datos"
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)} // Permite cerrar la alerta
+            style={{ marginBottom: '16px' }}
+           />
+      )}
+
+      {/* Contenedor para la Lista de Eventos */}
+      <Card title="Eventos Programados" size="default"> {/* Usa size="default" o quítalo */}
+        {/* Pasa los eventos del estado (que vienen de la API) */}
         <EventList
-                events={events}
-                onEdit={showEditModal}
-                onDelete={handleDeleteEvent}
-            />
-        </Card>
+            events={eventos}
+            onEdit={showEditModal}
+            // Modifica onDelete para pasar también el nombre para el mensaje
+            onDelete={(eventoId) => {
+                const evento = eventos.find(e => e.id === eventoId);
+                handleDeleteEvent(eventoId, evento?.nombre); // Pasa nombre si existe
+            }}
+        />
+      </Card>
 
-      </Space> {/* Cierra Space vertical */}
-
-      {/* Modal para Crear/Editar */}
+      {/* Modal para Crear/Editar Evento */}
       <Modal
-        title={editingEvent ? 'Editar Evento ' : 'Crear Nuevo Evento '}
-        open={isModalVisible}
-        onOk={handleOkModal}
+        // Título dinámico
+        title={editingEvent ? `Editar Evento: ${editingEvent.nombre}` : 'Crear Nuevo Evento'}
+        open={isModalVisible} // Controlado por el estado
+        onOk={handleOkModal} // Llama a la función que valida y llama a la API
         confirmLoading={isSubmitting} // Muestra loading en botón OK
-        onCancel={handleCancelModal}
-        destroyOnClose
-        maskClosable={false}
+        onCancel={handleCancelModal} // Cierra el modal
+        destroyOnClose // Destruye el estado del formulario al cerrar
+        maskClosable={false} // Evita cerrar al hacer clic fuera
+        width={600} // Ancho del modal
       >
+        {/* Renderiza el formulario dentro del modal */}
         <EventForm form={form} />
       </Modal>
-    </>
+    </Space>
   );
 };
 
-// Exportamos las variables "globales" simuladas para que otros componentes las lean
-export { currentEvents, currentParticipants };
+// YA NO SE EXPORTAN LAS VARIABLES GLOBALES

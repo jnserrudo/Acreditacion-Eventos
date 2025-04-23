@@ -1,4 +1,4 @@
-// src/components/event/EventForm.js
+// src/Components/EventForm.jsx
 import React from "react";
 import { Form, Input, DatePicker } from "antd";
 import dayjs from "dayjs"; // AntD v5+ usa dayjs por defecto
