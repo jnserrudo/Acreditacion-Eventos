@@ -20,7 +20,7 @@ const RUBROS_OPCIONES = [
   "Uñas y Pestañas",
   "Make Up",
   "Estética",
-  "Otro",
+  "Otros",
   // Puedes añadir 'Otro'
 ];
 
@@ -56,13 +56,13 @@ export const ParticipanteForm = ({ form }) => {
       >
         <Input placeholder="Código o número de la entrada" />
       </Form.Item>
-      <Form.Item name="telefono" label="Teléfono (Opcional)">
+      <Form.Item name="telefono" label="Teléfono" rules={[{ required: true, message: "Ingrese el número de teléfono." }]}>
         <Input placeholder="Número de teléfono" />
       </Form.Item>
       <Form.Item
         name="correo"
-        label="Correo Electrónico (Opcional)"
-        rules={[{ type: "email", message: "Correo inválido." }]}
+        label="Correo Electrónico"
+        rules={[{ required: true, type: "email", message: "Correo inválido." }]}
       >
         <Input placeholder="ejemplo@dominio.com" />
       </Form.Item>
@@ -70,10 +70,11 @@ export const ParticipanteForm = ({ form }) => {
       {/* --- NUEVOS CAMPOS --- */}
       <Form.Item
         name="medioPago" // Coincide con el modelo Prisma
-        label="Medio de Pago (Opcional)"
+        label="Medio de Pago"
+        rules={[{ required: true, message: 'Seleccione un medio de pago.' }]}
         // No es requerido, pero si se elige, se envía el string seleccionado
       >
-        <Select placeholder="Seleccione un medio de pago" allowClear>
+        <Select placeholder="Seleccione un medio de pago" /* allowClear */>
           {MEDIOS_PAGO_OPCIONES.map((opcion) => (
             <Option key={opcion} value={opcion}>
               {opcion}
@@ -86,9 +87,10 @@ export const ParticipanteForm = ({ form }) => {
 
       <Form.Item
         name="rubro" // Coincide con el modelo Prisma
-        label="Rubro (Opcional)"
+        label="Rubro"
+        rules={[{ required: true, message: 'Seleccione un rubro.' }]}
       >
-        <Select placeholder="Seleccione un rubro" allowClear>
+        <Select placeholder="Seleccione un rubro" /* allowClear */>
           {RUBROS_OPCIONES.map((opcion) => (
             <Option key={opcion} value={opcion}>
               {opcion}
