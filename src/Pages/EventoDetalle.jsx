@@ -1,5 +1,5 @@
 // src/Pages/EventoDetalle.js
-import React, { useState, useEffect, useCallback } from "react"; // Importa useCallback
+import React, { useState, useEffect, useCallback ,useRef } from "react"; // Importa useCallback
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   Typography,
@@ -34,7 +34,7 @@ import { toast } from "react-hot-toast"; // Para notificaciones
 import jsPDF from "jspdf"; // Para reportes PDF
 import autoTable from "jspdf-autotable"; // Para tablas en PDF
 
-import { utils, writeFile } from 'xlsx'; // <-- LÍNEA CORRECTA: Añadir 'utils'
+import { utils, writeFile } from "xlsx"; // <-- LÍNEA CORRECTA: Añadir 'utils'
 
 // Importar Servicios de API
 import { getEventoById } from "../services/evento.services.js";
@@ -42,6 +42,10 @@ import {
   getParticipantesByEventoId,
   createParticipante,
 } from "../services/participante.services.js";
+
+import { io } from "socket.io-client"; // Importa io client
+import { entorno as apiBaseUrl } from "../services/config.js";
+const socketUrl = apiBaseUrl.replace(/\/api$/, ""); // URL para Socket.IO
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -60,6 +64,9 @@ export const EventoDetalle = () => {
     useState(false);
   const [isSubmittingParticipant, setIsSubmittingParticipant] = useState(false); // Loading del botón OK del modal
   const [participantForm] = Form.useForm(); // Instancia del formulario AntD
+
+  const socketRef = useRef(null); // Ref para el socket
+
 
   // --- Función para Cargar Datos del Evento y Participantes (API) ---
   // Usamos useCallback para evitar recrear la función en cada render si eventId no cambia
@@ -105,6 +112,94 @@ export const EventoDetalle = () => {
     cargarDatos();
   }, [cargarDatos]); // Llama a la función definida con useCallback
 
+  // --- EFECTO PARA WEBSOCKETS (Similar a AcreditacionMode) ---
+  useEffect(() => {
+    const numericEventId = parseInt(eventId);
+    if (isNaN(numericEventId) || !socketUrl) return;
+
+    // Conectar
+    if (!socketRef.current) {
+      console.log(`EventoDetalle: Conectando socket a ${socketUrl}`);
+      socketRef.current = io(socketUrl, {
+        reconnectionAttempts: 5,
+        reconnectionDelay: 2000,
+      });
+    }
+    const socket = socketRef.current;
+
+    // Listeners de conexión/desconexión
+    const handleConnect = () => {
+      console.log("EventoDetalle: Socket conectado", socket.id);
+      socket.emit("join_event_room", numericEventId);
+    };
+    const handleDisconnect = (reason) => {
+      console.log(
+        "EventoDetalle: Socket desconectado",
+        reason
+      ); /* ... toast opcional ... */
+    };
+    const handleConnectError = (err) => {
+      console.error("EventoDetalle: Error conexión Socket", err);
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("connect_error", handleConnectError);
+
+    // --- Listener para NUEVOS participantes ---
+    const handleParticipantCreated = (nuevoParticipante) => {
+      console.log("Recibido [participant_created]:", nuevoParticipante);
+      if (nuevoParticipante?.eventoId !== numericEventId) return;
+
+      // Añade el nuevo participante al principio de la lista local
+      setParticipantes((prev) => [nuevoParticipante, ...prev]);
+      toast(
+        `Nuevo participante añadido: ${nuevoParticipante.nombre} ${nuevoParticipante.apellido}`,
+        { icon: "👤" }
+      );
+    };
+
+    // --- Listener para participantes ACTUALIZADOS (acreditados) ---
+    const handleParticipantUpdated = (updatedParticipant) => {
+      console.log("Recibido [participant_updated]:", updatedParticipant);
+      if (updatedParticipant?.eventoId !== numericEventId) return;
+
+      // Actualiza el participante en la lista local
+      setParticipantes((prev) =>
+        prev.map((p) =>
+          p.id === updatedParticipant.id ? updatedParticipant : p
+        )
+      );
+      // Muestra un toast informativo si la actualización fue acreditación
+      if (updatedParticipant.acreditado) {
+        toast.success(
+          `"${updatedParticipant.nombre} ${updatedParticipant.apellido}" fue acreditado.`
+        );
+      }
+      // Podrías añadir lógica para otros tipos de updates si los hubiera
+    };
+
+    // Registrar ambos listeners
+    socket.on("participant_created", handleParticipantCreated);
+    socket.on("participant_updated", handleParticipantUpdated);
+
+    // --- Limpieza ---
+    return () => {
+      console.log("EventoDetalle: Limpiando efecto WebSocket...");
+      if (socket) {
+        socket.off("connect", handleConnect);
+        socket.off("disconnect", handleDisconnect);
+        socket.off("connect_error", handleConnectError);
+        socket.off("participant_created", handleParticipantCreated); // Limpia este listener
+        socket.off("participant_updated", handleParticipantUpdated); // Limpia este listener
+
+        socket.emit("leave_event_room", numericEventId);
+        socket.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, [eventId, socketUrl]); // Depende solo de estos para la conexión
+
   // --- Manejo Añadir Participante Manual (Formulario y API) ---
   const showAddParticipantModal = () => {
     participantForm.resetFields();
@@ -130,9 +225,12 @@ export const EventoDetalle = () => {
           numericEventId,
           values
         );
-
+        /* 
         // Actualiza el estado local añadiendo el nuevo participante al inicio
-        setParticipantes((prev) => [nuevoParticipante, ...prev]);
+        setParticipantes((prev) => [nuevoParticipante, ...prev]); */
+
+        // ¡YA NO HACEMOS setParticipantes aquí! El listener 'participant_created' lo hará.
+        // Solo mostramos el toast para el usuario que hizo la acción.
         toast.success(
           `Participante "${nuevoParticipante.nombre} ${nuevoParticipante.apellido}" añadido con éxito.`
         );

@@ -62,7 +62,7 @@ export const ParticipanteForm = ({ form }) => {
       <Form.Item
         name="correo"
         label="Correo Electrónico"
-        rules={[{ required: true, type: "email", message: "Correo inválido." }]}
+        rules={[{ /* required: true, */ type: "email", message: "Correo inválido." }]}
       >
         <Input placeholder="ejemplo@dominio.com" />
       </Form.Item>

@@ -23,7 +23,20 @@ import { toast } from 'react-hot-toast';
 import { getEventoById } from '../services/evento.services.js'; // Para obtener nombre del evento
 import { getParticipantesByEventoId, acreditarParticipante } from '../services/participante.services.js'; // Para lista y acreditar
 
+import { io } from 'socket.io-client'; // <--- 1. Importa io de socket.io-client
+// Cerca del principio, junto a otros imports de servicios
+import { entorno as apiBaseUrl } from '../services/config.js';
+
 const { Title, Text, Paragraph } = Typography;
+
+
+// --- DERIVAR URL PARA SOCKET.IO ---
+// Quita '/api' del final si existe, para obtener la URL base del servidor
+const socketUrl = apiBaseUrl.replace(/\/api$/, '');
+// Ejemplo:
+// Si apiBaseUrl = 'http://localhost:3001/api', socketUrl = 'http://localhost:3001'
+// Si apiBaseUrl = 'https://....onrender.com/api', socketUrl = 'https://....onrender.com'
+// -----------------------------------
 
 export const AcreditacionMode = () => {
   const { eventId } = useParams();
@@ -41,7 +54,118 @@ export const AcreditacionMode = () => {
   const [foundParticipant, setFoundParticipant] = useState(null); // Participante encontrado
   const [isProcessing, setIsProcessing] = useState(false); // Estado para la llamada API de acreditar
 
+
+  const socketRef = useRef(null); // <--- 3. Ref para guardar la instancia del socket
+
+
   const dniInputRef = useRef(null); // Referencia al input para foco
+
+
+ // --- EFECTO PARA CONEXIÓN/DESCONEXIÓN DEL SOCKET ---
+ useEffect(() => {
+  const numericEventId = parseInt(eventId);
+  if (isNaN(numericEventId) || !socketUrl) return;
+
+  // Conecta solo si no está ya conectado
+  if (!socketRef.current) {
+      console.log(`Conectando socket a: ${socketUrl}`);
+      socketRef.current = io(socketUrl, { reconnectionAttempts: 5, reconnectionDelay: 2000 });
+  }
+
+  const socket = socketRef.current;
+
+  // --- Listener para conexión ---
+  const handleConnect = () => {
+      console.log('Socket conectado:', socket.id);
+      socket.emit('join_event_room', numericEventId);
+  };
+
+  // --- Listener para desconexión ---
+  const handleDisconnect = (reason) => {
+      console.log('Socket desconectado:', reason);
+      if (reason !== 'io client disconnect') {
+          toast.error('Conexión perdida (tiempo real).', { duration: 4000 });
+      }
+  };
+
+  // --- Listener para errores ---
+  const handleConnectError = (err) => {
+      console.error('Error conexión Socket:', err);
+  };
+
+  // Registrar listeners básicos de conexión
+  socket.on('connect', handleConnect);
+  socket.on('disconnect', handleDisconnect);
+  socket.on('connect_error', handleConnectError);
+
+  // --- Función de Limpieza ---
+  // Se ejecuta SOLO cuando eventId o socketUrl cambian, o al desmontar
+  return () => {
+      console.log('Limpiando efecto de CONEXIÓN WebSocket...');
+      if (socket) {
+          console.log(`Emitiendo leave_event_room para ${numericEventId} y desconectando.`);
+          socket.emit('leave_event_room', numericEventId);
+          socket.disconnect(); // Desconecta el socket
+          socketRef.current = null; // Limpia la referencia
+          // Quita los listeners básicos también
+          socket.off('connect', handleConnect);
+          socket.off('disconnect', handleDisconnect);
+          socket.off('connect_error', handleConnectError);
+      }
+  };
+  // SOLO depende de eventId y socketUrl
+}, [eventId, socketUrl]);
+
+
+// --- EFECTO PARA ESCUCHAR ACTUALIZACIONES ---
+// Este efecto se ejecuta una vez (o si el socket cambia, lo cual no debería pasar a menudo)
+useEffect(() => {
+  const socket = socketRef.current;
+  if (!socket) return; // Si no hay socket, no hagas nada
+
+  const numericEventId = parseInt(eventId); // Necesitamos el ID aquí también
+
+  // --- Listener para actualizaciones ---
+  const handleParticipantUpdate = (updatedParticipant) => {
+      console.log('Recibido [participant_updated]:', updatedParticipant);
+       if (updatedParticipant?.eventoId !== numericEventId) return;
+
+      // Actualiza la lista principal de participantes
+      setParticipantes(prev => prev.map(p => p.id === updatedParticipant.id ? updatedParticipant : p));
+
+      // Actualiza el participante encontrado (SI existe y coincide el ID)
+      // Es importante usar el valor MÁS RECIENTE de foundParticipant aquí.
+      // React asegura que setFoundParticipant use el valor actual en el momento de la actualización.
+      setFoundParticipant(prevFound => {
+          if (prevFound?.id === updatedParticipant.id) {
+              // Revisa si el estado de búsqueda necesita cambiar AHORA
+              if (!prevFound.acreditado && updatedParticipant.acreditado) {
+                   // Si estaba 'found' (pendiente) y ahora está acreditado
+                   setSearchStatus('already_accredited');
+                   toast(`"${updatedParticipant.nombre} ${updatedParticipant.apellido}" fue acreditado por otro usuario.`, { icon: 'ℹ️' });              }
+              return updatedParticipant; // Actualiza el participante encontrado
+          }
+          return prevFound; // Mantiene el participante encontrado si no es el actualizado
+      });
+  };
+
+  // Registrar el listener de actualizaciones
+  socket.on('participant_updated', handleParticipantUpdate);
+
+  // --- Limpieza para ESTE efecto ---
+  // Quita SOLO el listener de actualizaciones al desmontar o si el socket cambia
+  return () => {
+      console.log('Quitando listener participant_updated...');
+      if (socket) {
+          socket.off('participant_updated', handleParticipantUpdate);
+      }
+  };
+  // Este efecto depende de 'eventId' para asegurar que el ID usado en el listener es correcto
+  // Y también de 'foundParticipant' y 'searchStatus' para que la lógica DENTRO del listener
+  // que los usa, se re-evalúe con los valores más recientes si esos estados cambian
+  // (aunque la actualización principal del estado se hace con la función setter que ya tiene el valor correcto).
+  // Probemos quitando foundParticipant y searchStatus de aquí a ver si funciona estable:
+}, [eventId]); // <-- Dependencia reducida
 
   // --- Función para Cargar Datos Iniciales (Nombre Evento y Lista Participantes) ---
   const cargarDatosIniciales = useCallback(async () => {
