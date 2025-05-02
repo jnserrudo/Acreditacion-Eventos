@@ -1,5 +1,5 @@
 // src/Pages/EventoDetalle.js
-import React, { useState, useEffect, useCallback ,useRef } from "react"; // Importa useCallback
+import React, { useState, useEffect, useCallback, useRef } from "react"; // Importa useCallback
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   Typography,
@@ -14,6 +14,8 @@ import {
   Space,
   Modal,
   Form,
+  Input,
+  InputNumber,
   // QUITAR: message as antdMessage (ya no se usa)
 } from "antd";
 import {
@@ -22,6 +24,7 @@ import {
   // QUITAR: CheckCircleOutlined (no se usa directamente aquí)
   DownloadOutlined,
   UserAddOutlined,
+  SafetyOutlined,
   // QUITAR: EditOutlined, DeleteOutlined (pertenecen a EventoABM o lista)
 } from "@ant-design/icons";
 // QUITAR: Importación de variables globales simuladas
@@ -41,13 +44,20 @@ import { getEventoById } from "../services/evento.services.js";
 import {
   getParticipantesByEventoId,
   createParticipante,
+  cancelPendingAmountParticipante,
+  updatePrecioEntradaParticipante,
+  assignNuevaEntradaParticipante,
 } from "../services/participante.services.js";
 
 import { io } from "socket.io-client"; // Importa io client
 import { entorno as apiBaseUrl } from "../services/config.js";
-const socketUrl = apiBaseUrl.replace(/\/api$/, ""); // URL para Socket.IO
+/* import Input from "antd/es/input/Input.js";
+ */ const socketUrl = apiBaseUrl.replace(/\/api$/, ""); // URL para Socket.IO
 
 const { Title, Paragraph, Text } = Typography;
+
+// Fuera del componente EventoDetalle
+const PRECIO_ENTRADA_ACTUAL = 50000;
 
 export const EventoDetalle = () => {
   const { eventId } = useParams(); // Obtiene el ID del evento de la URL
@@ -65,8 +75,27 @@ export const EventoDetalle = () => {
   const [isSubmittingParticipant, setIsSubmittingParticipant] = useState(false); // Loading del botón OK del modal
   const [participantForm] = Form.useForm(); // Instancia del formulario AntD
 
-  const socketRef = useRef(null); // Ref para el socket
+  // Dentro de EventoDetalle
+  const [searchTerm, setSearchTerm] = useState(""); // Estado para el input de búsqueda
 
+  // --- Estados para Modal Editar Precio ---
+  const [editingPrecioInfo, setEditingPrecioInfo] = useState({
+    visible: false,
+    participante: null,
+    loading: false,
+  });
+  const [precioForm] = Form.useForm(); // Formulario para el modal de precio
+
+  // --- NUEVO: Estados para Modal Asignar Nueva Entrada ---
+  const [assigningEntradaInfo, setAssigningEntradaInfo] = useState({
+    visible: false,
+    participante: null,
+    loading: false,
+  });
+  const [nuevaEntradaFormValue, setNuevaEntradaFormValue] = useState(""); // Estado para el input del modal
+  // ------------------------------------------------------
+
+  const socketRef = useRef(null); // Ref para el socket
 
   // --- Función para Cargar Datos del Evento y Participantes (API) ---
   // Usamos useCallback para evitar recrear la función en cada render si eventId no cambia
@@ -200,54 +229,236 @@ export const EventoDetalle = () => {
     };
   }, [eventId, socketUrl]); // Depende solo de estos para la conexión
 
-  // --- Manejo Añadir Participante Manual (Formulario y API) ---
+  // --- Handlers CRUD Participante Manual ---
   const showAddParticipantModal = () => {
     participantForm.resetFields();
+    // Establece defaults para nuevos participantes manuales
+    participantForm.setFieldsValue({
+      precioEntrada: PRECIO_ENTRADA_ACTUAL,
+      montoPagado: 0, // O podría ser PRECIO_ENTRADA_ACTUAL si pagan todo al registrarse manualmente
+    });
     setIsParticipantModalVisible(true);
   };
-
-  const handleCancelParticipantModal = () => {
+  const handleCancelParticipantModal = () =>
     setIsParticipantModalVisible(false);
-  };
-
   const handleAddParticipantOk = async () => {
     try {
-      // Valida el formulario AntD
       const values = await participantForm.validateFields();
-      setIsSubmittingParticipant(true); // Activa loading del botón OK
-
+      // Asegura que los montos sean números antes de enviar si InputNumber no lo hace
+      const dataToSend = {
+        ...values,
+        precioEntrada: parseFloat(values.precioEntrada),
+        montoPagado: parseFloat(values.montoPagado),
+      };
+      setIsSubmittingParticipant(true);
       try {
-        // --- LLAMADA API: CREAR PARTICIPANTE ---
-        // Asegura que el eventId sea número
         const numericEventId = parseInt(eventId);
-        // Los 'values' ya vienen del formulario con los nombres correctos
         const nuevoParticipante = await createParticipante(
           numericEventId,
-          values
+          dataToSend
         );
-        /* 
-        // Actualiza el estado local añadiendo el nuevo participante al inicio
-        setParticipantes((prev) => [nuevoParticipante, ...prev]); */
-
-        // ¡YA NO HACEMOS setParticipantes aquí! El listener 'participant_created' lo hará.
-        // Solo mostramos el toast para el usuario que hizo la acción.
+        // Ya no actualiza localmente, confía en WebSocket 'participant_created'
         toast.success(
-          `Participante "${nuevoParticipante.nombre} ${nuevoParticipante.apellido}" añadido con éxito.`
+          `Participante "${nuevoParticipante.nombre} ${nuevoParticipante.apellido}" añadido.`
         );
-        setIsParticipantModalVisible(false); // Cierra el modal
+        setIsParticipantModalVisible(false);
       } catch (apiError) {
-        // Si la API devuelve error (400, 404, 409)
-        console.error("Error al añadir participante vía API:", apiError);
-        toast.error(apiError.message || "No se pudo añadir el participante.");
-        // No cerramos el modal en caso de error de API
+        toast.error(apiError.message || "No se pudo añadir.");
       }
     } catch (validationError) {
-      // Error de validación del formulario AntD (ya se muestra en la UI)
-      console.log("Error de validación del formulario:", validationError);
+      console.log("Error validación form");
     } finally {
-      setIsSubmittingParticipant(false); // Desactiva loading del botón OK
+      setIsSubmittingParticipant(false);
     }
   };
+
+  // --- Handlers NUEVAS Acciones ---
+
+  // Handler para la acción "Cancelar Saldo"
+  const handleCancelPendingAmount = async (participanteId) => {
+    const participante = participantes.find((p) => p.id === participanteId); // Para el mensaje
+    const nombreCompleto = participante
+      ? `${participante.nombre} ${participante.apellido}`
+      : `ID ${participanteId}`;
+    const toastId = toast.loading(
+      `Registrando pago total para ${nombreCompleto}...`
+    );
+    try {
+      // Llama al servicio API
+      const participanteActualizado = await cancelPendingAmountParticipante(
+        participanteId
+      );
+      // Actualiza estado local para feedback inmediato (WebSocket actualizará para otros)
+      setParticipantes((prev) =>
+        prev.map((p) => (p.id === participanteId ? participanteActualizado : p))
+      );
+      toast.success(`Pago total registrado para ${nombreCompleto}.`, {
+        id: toastId,
+      });
+    } catch (error) {
+      console.error("Error al cancelar saldo:", error);
+      toast.error(error.message || "No se pudo registrar el pago total.", {
+        id: toastId,
+      });
+    }
+  };
+
+  // Handler para ABRIR el modal de editar precio
+  const showEditPrecioModal = (participante) => {
+    setEditingPrecioInfo({
+      visible: true,
+      participante: participante,
+      loading: false,
+    });
+    // Establece valor inicial (puede ser null)
+    precioForm.setFieldsValue({
+      nuevoPrecioForm:
+        participante.precioEntrada !== null
+          ? parseFloat(participante.precioEntrada)
+          : null,
+    });
+  };
+  // Handler para CERRAR el modal de editar precio
+  const handleCancelPrecioModal = () => {
+    setEditingPrecioInfo({
+      visible: false,
+      participante: null,
+      loading: false,
+    });
+    precioForm.resetFields();
+  };
+  // Handler para el OK del modal de editar precio (llama a la API)
+  const handleUpdatePrecioOk = async () => {
+    const participanteId = editingPrecioInfo.participante?.id;
+    if (!participanteId) return;
+
+    try {
+      const values = await precioForm.validateFields();
+      const nuevoPrecio = values.nuevoPrecioForm; // Puede ser número o null
+      setEditingPrecioInfo((prev) => ({ ...prev, loading: true })); // Activa loading del modal
+
+      const toastId = toast.loading(`Actualizando precio...`);
+      try {
+        // Llama al servicio API
+        const participanteActualizado = await updatePrecioEntradaParticipante(
+          participanteId,
+          nuevoPrecio
+        );
+        // Actualiza localmente
+        setParticipantes((prev) =>
+          prev.map((p) =>
+            p.id === participanteId ? participanteActualizado : p
+          )
+        );
+        toast.success("Precio de entrada actualizado.", { id: toastId });
+        handleCancelPrecioModal(); // Cierra el modal en éxito
+      } catch (apiError) {
+        console.error("Error API al actualizar precio:", apiError);
+        toast.error(apiError.message || "No se pudo actualizar el precio.", {
+          id: toastId,
+        });
+        // No cerrar modal en error
+      }
+    } catch (validationError) {
+      console.log("Error de validación de precio:", validationError);
+    } finally {
+      setEditingPrecioInfo((prev) => ({ ...prev, loading: false })); // Desactiva loading del modal
+    }
+  };
+
+  // Handler para la acción "Asignar Nueva Entrada"
+  const handleAssignNewEntry = async (participanteId, nuevaEntrada) => {
+    const participante = participantes.find((p) => p.id === participanteId);
+    const nombreCompleto = participante
+      ? `${participante.nombre} ${participante.apellido}`
+      : `ID ${participanteId}`;
+    const toastId = toast.loading(
+      `Asignando nueva entrada a ${nombreCompleto}...`
+    );
+    try {
+      const participanteActualizado = await assignNuevaEntradaParticipante(
+        participanteId,
+        nuevaEntrada
+      );
+      // Actualiza localmente
+      setParticipantes((prev) =>
+        prev.map((p) => (p.id === participanteId ? participanteActualizado : p))
+      );
+      toast.success(`Nueva entrada '${nuevaEntrada}' asignada.`, {
+        id: toastId,
+      });
+      // No necesita devolver nada, el modal interno se cierra solo en éxito (si así lo programaste)
+    } catch (error) {
+      console.error("Error al asignar nueva entrada:", error);
+      toast.error(error.message || "No se pudo asignar la nueva entrada.", {
+        id: toastId,
+      });
+      throw error; // Lanza error para que el modal interno no se cierre
+    }
+  };
+
+  // --- NUEVO: Handlers para Modal ASIGNAR NUEVA ENTRADA ---
+  const showAssignEntradaModal = (participante) => {
+    setAssigningEntradaInfo({
+      visible: true,
+      participante: participante,
+      loading: false,
+    });
+    setNuevaEntradaFormValue(""); // Limpia el input al abrir
+  };
+
+  const handleCancelAssignEntradaModal = () => {
+    setAssigningEntradaInfo({
+      visible: false,
+      participante: null,
+      loading: false,
+    });
+    setNuevaEntradaFormValue("");
+  };
+
+  const handleAssignEntradaOk = async () => {
+    const participanteId = assigningEntradaInfo.participante?.id;
+    const nombreCompleto = assigningEntradaInfo.participante
+      ? `${assigningEntradaInfo.participante.nombre} ${assigningEntradaInfo.participante.apellido}`
+      : `ID ${participanteId}`;
+    const nuevaEntrada = nuevaEntradaFormValue.trim(); // Usa el valor del estado del input
+
+    if (!participanteId) return;
+    if (!nuevaEntrada) {
+      toast.error("El nuevo número de entrada no puede estar vacío.");
+      return;
+    }
+
+    setAssigningEntradaInfo((prev) => ({ ...prev, loading: true })); // Activa loading
+    const toastId = toast.loading(
+      `Asignando nueva entrada a ${nombreCompleto}...`
+    );
+
+    try {
+      // Llama al servicio API con ID y NUEVO VALOR
+      const participanteActualizado = await assignNuevaEntradaParticipante(
+        participanteId,
+        nuevaEntrada
+      );
+      // Actualiza localmente
+      setParticipantes((prev) =>
+        prev.map((p) => (p.id === participanteId ? participanteActualizado : p))
+      );
+      toast.success(`Nueva entrada '${nuevaEntrada}' asignada.`, {
+        id: toastId,
+      });
+      handleCancelAssignEntradaModal(); // Cierra el modal en éxito
+    } catch (error) {
+      console.error("Error al asignar nueva entrada:", error);
+      toast.error(error.message || "No se pudo asignar la nueva entrada.", {
+        id: toastId,
+      });
+      // No cerrar el modal en caso de error
+    } finally {
+      setAssigningEntradaInfo((prev) => ({ ...prev, loading: false })); // Desactiva loading
+    }
+  };
+  // ----------------------------------------------------------
 
   // --- Manejo Post-Importación Masiva (Llamado por ImportarParticipantes) ---
   // Esta función ahora solo refresca la lista si hubo éxito
@@ -320,10 +531,23 @@ export const EventoDetalle = () => {
         "Estado",
         "Medio Pago",
         "Rubro",
+        "Precio Entrada",
+        "Monto Pagado",
+        "Estado Pago",
+        "Nueva Entrada",
       ];
       const tableRows = [];
       // Itera sobre 'participantes' del estado
       participantes.forEach((p) => {
+        const monto = parseFloat(p.montoPagado || 0);
+        const precio = parseFloat(p.precioEntrada); // NaN si es null
+        let estadoPago = "N/A (Sin Precio)";
+        if (!isNaN(precio)) {
+          if (monto >= precio) estadoPago = "Total";
+          else if (monto > 0) estadoPago = "Parcial";
+          else estadoPago = "Pendiente";
+        }
+
         tableRows.push([
           p.nombre,
           p.apellido,
@@ -332,6 +556,14 @@ export const EventoDetalle = () => {
           p.acreditado ? "Acreditado" : "Pendiente",
           p.medioPago || "-", // Muestra '-' si es null/undefined
           p.rubro || "-", // Muestra '-' si es null/undefined
+          p.precioEntrada !== null
+            ? parseFloat(p.precioEntrada).toLocaleString("es-AR")
+            : "-", // Formateado
+          p.montoPagado !== null
+            ? parseFloat(p.montoPagado).toLocaleString("es-AR")
+            : "-", // Formateado
+          estadoPago, // <- Columna Estado Pago Calculada
+          p.nuevaEntrada || "-", // Muestra '-' si es null/undefined
         ]);
       });
 
@@ -368,54 +600,65 @@ export const EventoDetalle = () => {
     const toastId = toast.loading("Generando reporte Excel...");
 
     try {
-      // 1. Definir Cabeceras (usar los nombres que quieres ver en Excel)
+      // Asegúrate que las cabeceras y los datos incluyan precioEntrada
       const headers = [
         "Nombre",
         "Apellido",
         "DNI",
         "Nro Entrada",
-        "Estado",
+        "Precio Entrada",
+        "Monto Pagado",
+        "Estado Pago",
+        "Acreditado",
         "Teléfono",
         "Correo",
         "Medio Pago",
         "Rubro",
+        "Nueva Entrada",
       ];
+      const dataRows = participantes.map((p) => {
+        const monto = parseFloat(p.montoPagado || 0);
+        const precio = parseFloat(p.precioEntrada);
+        let estadoPago = "N/A (Sin Precio)";
+        if (!isNaN(precio)) {
+          if (monto >= precio) estadoPago = "Total";
+          else if (monto > 0) estadoPago = "Parcial";
+          else estadoPago = "Pendiente";
+        }
 
-      // 2. Preparar Datos (array de arrays)
-      const dataRows = participantes.map((p) => [
-        p.nombre,
-        p.apellido,
-        p.dni,
-        p.numeroEntrada,
-        p.acreditado ? "Acreditado" : "Pendiente",
-        p.telefono || "", // Usar string vacío si es null/undefined
-        p.correo || "",
-        p.medioPago || "",
-        p.rubro || "",
-      ]);
-
-      // 3. Crear Hoja de Cálculo
-      //    Añade las cabeceras al principio de las filas de datos
+        return [
+          p.nombre,
+          p.apellido,
+          p.dni,
+          p.numeroEntrada,
+          p.precioEntrada !== null ? parseFloat(p.precioEntrada) : "", // Muestra número o vacío
+          monto,
+          estadoPago,
+          p.acreditado ? "SI" : "NO",
+          p.telefono || "",
+          p.correo || "",
+          p.medioPago || "",
+          p.rubro || "",
+          p.nuevaEntrada || "",
+        ];
+      });
       const worksheet = utils.aoa_to_sheet([headers, ...dataRows]);
+      // Formatear columnas numéricas
+      dataRows.forEach((_, rowIndex) => {
+        const precioCellRef = utils.encode_cell({ c: 4, r: rowIndex + 1 });
+        const montoCellRef = utils.encode_cell({ c: 5, r: rowIndex + 1 });
+        if (worksheet[precioCellRef] && worksheet[precioCellRef].v !== "")
+          worksheet[precioCellRef].t = "n"; // Solo si no está vacío
+        if (worksheet[montoCellRef]) worksheet[montoCellRef].t = "n";
+      });
+      worksheet["!cols"] = headers.map(() => ({ wch: 15 }));
 
-      // 4. Crear Libro de Trabajo
       const workbook = utils.book_new();
-      utils.book_append_sheet(workbook, worksheet, "Participantes"); // Nombre de la hoja
-
-      // Opcional: Ajustar ancho de columnas (ejemplo básico)
-      // Esto es más complejo, podrías buscar ejemplos específicos de SheetJS si necesitas autoajuste
-      const colWidths = headers.map((_, i) => ({ wch: i < 4 ? 20 : 15 })); // Ancho estimado por columna
-      worksheet["!cols"] = colWidths;
-
-      // 5. Generar Nombre de Archivo
+      utils.book_append_sheet(workbook, worksheet, "Participantes");
       const safeEventName = evento.nombre
         .replace(/[^a-z0-9]/gi, "_")
         .toLowerCase();
-      const fileName = `reporte_participantes_${safeEventName}_${evento.id}.xlsx`;
-
-      // 6. Descargar Archivo
-      writeFile(workbook, fileName);
-
+      writeFile(workbook, `reporte_${safeEventName}_${evento.id}.xlsx`);
       toast.success("Reporte Excel generado.", { id: toastId });
     } catch (excelError) {
       console.error("Error generando Excel:", excelError);
@@ -482,6 +725,24 @@ export const EventoDetalle = () => {
   const accreditedParticipants = participantes.filter(
     (p) => p.acreditado
   ).length; // Usa boolean 'acreditado'
+
+  // Antes del return final del componente EventoDetalle
+  const filteredParticipants = participantes.filter((p) => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return true; // Si no hay término, mostrar todos
+
+    // Busca en los campos relevantes (ignora mayúsculas/minúsculas)
+    return (
+      p.nombre?.toLowerCase().includes(term) ||
+      p.apellido?.toLowerCase().includes(term) ||
+      p.dni?.toLowerCase().includes(term)
+      // Podrías añadir más campos si quieres:
+      // || p.numeroEntrada?.toLowerCase().includes(term)
+      // || p.correo?.toLowerCase().includes(term)
+    );
+  });
+
+  // ... luego en el return usas <ParticipantesListas participants={filteredParticipants} />
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
@@ -571,6 +832,17 @@ export const EventoDetalle = () => {
 
       {/* Card Lista Participantes */}
       <Card title="Lista de Participantes">
+        {/* Input de Búsqueda */}
+
+        <Input.Search
+          placeholder="Buscar por Nombre, Apellido o DNI..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          onSearch={(value) => setSearchTerm(value)} // Opcional: buscar al presionar enter/botón
+          allowClear
+          style={{ marginBottom: "16px", maxWidth: "400px" }} // Estilo opcional
+        />
+
         {/* Muestra error si falló carga de participantes pero no del evento */}
         {error && evento && (
           <Alert
@@ -582,7 +854,15 @@ export const EventoDetalle = () => {
           />
         )}
         {/* Pasa la lista de participantes real */}
-        <ParticipantesListas participants={participantes} />
+        {/* <ParticipantesListas participants={participantes} /> */}
+
+        {/* Pasar lista FILTRADA a ParticipantesListas */}
+        <ParticipantesListas
+          participants={filteredParticipants}
+          onCancelPayment={handleCancelPendingAmount} // Pasa la función correcta
+          onAssignNewEntry={showAssignEntradaModal} // Pasa la función correcta
+          onUpdatePrecioEntrada={showEditPrecioModal} // Pasa la función que ABRE el modal de editar precio
+        />
       </Card>
 
       {/* Modal Añadir Participante Manual */}
@@ -597,6 +877,85 @@ export const EventoDetalle = () => {
       >
         <ParticipanteForm form={participantForm} />
       </Modal>
+      {/* --- AÑADIR ESTE MODAL PARA EDITAR PRECIO --- */}
+      <Modal
+        title={`Editar Precio Entrada: ${editingPrecioInfo.participante?.nombre} ${editingPrecioInfo.participante?.apellido}`}
+        open={editingPrecioInfo.visible} // Controlado por estado
+        onOk={handleUpdatePrecioOk} // Llama al handler de actualización
+        onCancel={handleCancelPrecioModal} // Llama al handler de cancelar/cerrar
+        confirmLoading={editingPrecioInfo.loading} // Usa el loading específico
+        okText="Actualizar Precio"
+        cancelText="Cancelar"
+        destroyOnClose
+        maskClosable={false}
+      >
+        {/* Contenido del Modal: Formulario para el nuevo precio */}
+        <Form form={precioForm} layout="vertical" name="edit_precio_form">
+          <p>Participante DNI: {editingPrecioInfo.participante?.dni}</p>
+          <Form.Item
+            name="nuevoPrecioForm" // Nombre del campo en este form
+            label="Nuevo Precio de Entrada (0 = Gratis, Vacío = Quitar)"
+            rules={[
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (value === null || value === undefined || value === "")
+                    return Promise.resolve();
+                  if (isNaN(value) || value < 0) {
+                    return Promise.reject(
+                      new Error("Debe ser número válido (0 o mayor)")
+                    );
+                  }
+                  return Promise.resolve();
+                },
+              }),
+            ]}
+          >
+            <InputNumber
+              placeholder="Ej: 45000 o 0"
+              style={{ width: "100%" }}
+              min={0}
+              step={1000}
+              formatter={(value) =>
+                `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+              }
+              parser={(value) => value?.replace(/\$\s?|(,*)/g, "") ?? ""}
+            />
+          </Form.Item>
+        </Form>
+        <Text type="secondary" style={{ fontSize: "0.85em" }}>
+          Nota: Si el participante ya pagó más que este nuevo precio, su monto
+          pagado no cambiará.
+        </Text>
+      </Modal>
+      {/* --- FIN MODAL EDITAR PRECIO --- */}
+
+      {/* --- NUEVO: Modal para Asignar Nueva Entrada --- */}
+      <Modal
+        title={`Asignar Nueva Entrada a ${assigningEntradaInfo.participante?.nombre} ${assigningEntradaInfo.participante?.apellido}`}
+        open={assigningEntradaInfo.visible}
+        onOk={handleAssignEntradaOk} // Llama al handler que ejecuta la API
+        onCancel={handleCancelAssignEntradaModal}
+        confirmLoading={assigningEntradaInfo.loading}
+        okText="Asignar"
+        cancelText="Cancelar"
+        destroyOnClose
+        maskClosable={false}
+      >
+        <p>Participante DNI: {assigningEntradaInfo.participante?.dni}</p>
+        <p>
+          Entrada Original: {assigningEntradaInfo.participante?.numeroEntrada}
+        </p>
+        <p>
+          Nueva Entrada Actual:{" "}
+          {assigningEntradaInfo.participante?.nuevaEntrada || "Ninguna"}
+        </p>
+        <Input
+          placeholder="Ingrese el nuevo Nro de Entrada"
+          value={nuevaEntradaFormValue} // Controlado por estado
+          onChange={(e) => setNuevaEntradaFormValue(e.target.value)} // Actualiza estado del input
+        />
+      </Modal>
+      {/* --- FIN MODAL ASIGNAR NUEVA ENTRADA --- */}
     </Space>
   );
 };
