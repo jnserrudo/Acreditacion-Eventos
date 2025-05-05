@@ -8,6 +8,7 @@ import {
   Button,
   Space,
   Popconfirm,
+  Select,
   Modal,
   Input,
   InputNumber,
@@ -183,6 +184,101 @@ const EditPrecioAction = ({ participante, onUpdatePrecioEntrada }) => {
   );
 }; */
 
+const MEDIOS_PAGO_CANCELACION = ["Efectivo", "QR", "Tarjeta Débito/Crédito","Otro"];
+
+// --- NUEVO: Componente interno para el Popconfirm de Cancelar Saldo ---
+const CancelSaldoAction = ({ participante, onConfirm }) => {
+  const [visible, setVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [medioPagoSeleccionado, setMedioPagoSeleccionado] = useState(null);
+
+  const precio = parseFloat(participante.precioEntrada);
+  const monto = parseFloat(participante.montoPagado || 0);
+  // La acción solo tiene sentido si tiene precio, no está acreditado Y no está pago
+  const puedeCancelar =
+    !isNaN(precio) && !participante.acreditado && monto < precio;
+
+  const showPopconfirm = () => {
+    if (puedeCancelar) setVisible(true);
+  };
+  const handleCancel = () => {
+    setVisible(false);
+    setMedioPagoSeleccionado(null);
+  };
+  const handleConfirm = async () => {
+    if (!medioPagoSeleccionado) {
+      toast.error("Seleccione medio de pago");
+      return;
+    }
+    setLoading(true);
+    try {
+      await onConfirm(participante.id, medioPagoSeleccionado); // Llama al handler del padre con ID y Medio Pago
+      setVisible(false); // Cierra si éxito
+      setMedioPagoSeleccionado(null);
+    } catch (error) {
+      // El padre ya muestra el toast de error
+      console.error("Error en confirmación de cancelar saldo:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const titleContent = (
+    <Space direction="vertical" style={{ width: 200 }}>
+      {" "}
+      {/* Ancho para que quepa bien */}
+      <p>Completar pago a {formatCurrency(participante.precioEntrada)}?</p>
+      <Select
+        placeholder="Medio de Pago"
+        value={medioPagoSeleccionado}
+        onChange={setMedioPagoSeleccionado}
+        style={{ width: "100%" }}
+        size="small"
+      >
+        {MEDIOS_PAGO_CANCELACION.map((m) => (
+          <Select.Option key={m} value={m}>
+            {m}
+          </Select.Option>
+        ))}
+      </Select>
+    </Space>
+  );
+
+  return (
+    <Popconfirm
+      title={titleContent}
+      open={visible}
+      onConfirm={handleConfirm}
+      onCancel={handleCancel}
+      okText="Confirmar Pago"
+      cancelText="Cancelar"
+      okButtonProps={{ loading: loading, disabled: !medioPagoSeleccionado }}
+      disabled={!puedeCancelar} // Deshabilita todo si no se puede cancelar
+      // No usar onVisibleChange si controlamos open manualmente
+    >
+      {/* El botón que dispara la apertura del Popconfirm */}
+      <Tooltip
+        title={
+          participante.acreditado
+            ? "Ya acreditado"
+            : !isNaN(precio)
+            ? puedeCancelar
+              ? "Registrar Pago Total"
+              : "Pago ya completo"
+            : "Asignar precio primero"
+        }
+      >
+        <Button
+          icon={<CheckCircleOutlined />}
+          size="small"
+          disabled={!puedeCancelar || participante.acreditado} // Deshabilitado visualmente
+          onClick={showPopconfirm} // Abre el popconfirm
+        />
+      </Tooltip>
+    </Popconfirm>
+  );
+};
+
 export const ParticipantesListas = ({
   participants = [],
   // Funciones recibidas como props desde EventoDetalle
@@ -323,7 +419,7 @@ export const ParticipantesListas = ({
 
     // --- NUEVAS COLUMNAS ---
     {
-      title: "Medio Pago",
+      title: "Medio Pago (Inicial)",
       dataIndex: "medioPago", // Coincide con el modelo Prisma
       key: "medioPago",
       render: (medio) => medio || "-", // Muestra '-' si es nulo/vacío
@@ -333,6 +429,17 @@ export const ParticipantesListas = ({
       // filters: [...],
       // onFilter: (...) => ...,
     },
+    // --- NUEVA COLUMNA: Medio Pago Cancelación ---
+    {
+      title: "Medio Pago (Cancel.)",
+      dataIndex: "medioPagoCancelacion", // <- Usa el nuevo campo del modelo
+      key: "medioPagoCancelacion",
+      width: 100,
+      render: (mpc) => mpc || "-", // Muestra si existe
+      responsive: ["lg"],
+    },
+    // ----------------------------------------
+
     {
       title: "Rubro",
       dataIndex: "rubro", // Coincide con el modelo Prisma
@@ -362,42 +469,27 @@ export const ParticipantesListas = ({
 
         return (
           <Space size="small">
-            {/* Botón Cancelar Saldo */}
+            {/* Usa el componente Popconfirm personalizado */}
+            <CancelSaldoAction
+              participante={record}
+              onConfirm={onCancelPayment}
+            />
+
+            {/* Botón Editar Precio (llama directo al handler del padre) */}
             <Tooltip
               title={
-                pagoCompleto
-                  ? "Pago ya completo"
-                  : isNaN(precio)
-                  ? "Asignar precio primero"
-                  : "Registrar Pago Total"
+                record.acreditado
+                  ? "No se puede editar (acreditado)"
+                  : "Editar Precio de Entrada"
               }
             >
-              {/* Usamos Popconfirm para confirmación rápida */}
-              <Popconfirm
-                title={`Completar pago a ${formatCurrency(
-                  record.precioEntrada
-                )}?`}
-                onConfirm={() => onCancelPayment(record.id)} // Llama al handler del padre
-                okText="Sí"
-                cancelText="No"
-                disabled={!puedeCancelarSaldo} // Deshabilitado si no puede cancelar
-              >
-                <Button
-                  icon={<CheckCircleOutlined />}
-                  size="small"
-                  disabled={!puedeCancelarSaldo} // Doble seguridad
-                />
-              </Popconfirm>
-            </Tooltip>
-            {/* 2. Botón Editar Precio (Llama a la prop onUpdatePrecioEntrada) */}
-            <Tooltip title="Editar Precio de Entrada">
-              {/* Llama a la prop onUpdatePrecioEntrada pasando el objeto participante completo */}
               <Button
                 icon={<DollarOutlined />}
                 size="small"
                 type="dashed"
-                onClick={() => onUpdatePrecioEntrada(record)} // Llama a la función que abre el modal en EventoDetalle
-               />
+                onClick={() => onUpdatePrecioEntrada(record)}
+                disabled={record.acreditado}
+              />
             </Tooltip>
 
             {/* 3. Botón Asignar Nueva Entrada (Llama a la prop onAssignNewEntry) */}

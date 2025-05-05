@@ -127,12 +127,20 @@ export const buscarParticipanteParaAcreditar = async (eventoId, searchTerm) => {
  * @returns {Promise<object>} El participante actualizado.
  * @throws {Error} Si la API devuelve error (404, 400 por precio no asignado, etc.).
  */
-export const cancelPendingAmountParticipante = async (participanteId) => {
+export const cancelPendingAmountParticipante = async (participanteId,medioPagoSeleccionado) => {//recibe medio de pago de la cancelacion
+  
+  console.log("Medio de pago seleccionado:", medioPagoSeleccionado);
+  if (!medioPagoSeleccionado || typeof medioPagoSeleccionado !== 'string' || !medioPagoSeleccionado.trim()) {
+    throw new Error("Se requiere seleccionar un medio de pago para la cancelación.");
+}
   try {
     // Llama al nuevo endpoint del backend, no necesita body
     const response = await fetch(`${RUTA_BASE_PARTICIPANTES}/${participanteId}/cancelar-saldo`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" } // Buena práctica incluirla
+      headers: { "Content-Type": "application/json" }, // Buena práctica incluirla
+      // --- ENVIAR LA CLAVE CORRECTA EN EL BODY ---
+      body: JSON.stringify({ medioPagoCancelacion: medioPagoSeleccionado.trim() }), // <-- Clave corregida
+      // -------------------------------------------
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));

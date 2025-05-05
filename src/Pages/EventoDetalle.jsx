@@ -112,13 +112,19 @@ export const EventoDetalle = () => {
     setLoading(true);
     setError(null);
     try {
-      // Llama a ambas APIs (detalles evento y lista participantes) en paralelo
-      const [eventoData, participantesData] = await Promise.all([
-        getEventoById(numericEventId),
-        getParticipantesByEventoId(numericEventId),
-      ]);
-      setEvento(eventoData); // Guarda detalles del evento
-      setParticipantes(participantesData); // Guarda lista de participantes
+      const eventoData = await getEventoById(numericEventId);
+      setEvento(eventoData);
+      // Solo busca participantes DESPUÉS de obtener el evento
+      if (eventoData) {
+        const participantesData = await getParticipantesByEventoId(
+          numericEventId
+        );
+        setParticipantes(participantesData);
+        setError(null); // <--- ¡AQUÍ! Limpia el error si todo fue bien
+
+      } else {
+        setParticipantes([]); // Limpia participantes si no hay evento
+      }
     } catch (err) {
       console.error("Error al cargar datos del evento y participantes:", err);
       const errorMessage =
@@ -275,7 +281,10 @@ export const EventoDetalle = () => {
   // --- Handlers NUEVAS Acciones ---
 
   // Handler para la acción "Cancelar Saldo"
-  const handleCancelPendingAmount = async (participanteId) => {
+  const handleCancelPendingAmount = async (
+    participanteId,
+    medioPagoSeleccionado
+  ) => {
     const participante = participantes.find((p) => p.id === participanteId); // Para el mensaje
     const nombreCompleto = participante
       ? `${participante.nombre} ${participante.apellido}`
@@ -286,7 +295,8 @@ export const EventoDetalle = () => {
     try {
       // Llama al servicio API
       const participanteActualizado = await cancelPendingAmountParticipante(
-        participanteId
+        participanteId,
+        medioPagoSeleccionado
       );
       // Actualiza estado local para feedback inmediato (WebSocket actualizará para otros)
       setParticipantes((prev) =>
@@ -530,6 +540,7 @@ export const EventoDetalle = () => {
         "Nro Entrada",
         "Estado",
         "Medio Pago",
+        "Medio Pago Cancelación",
         "Rubro",
         "Precio Entrada",
         "Monto Pagado",
@@ -555,6 +566,7 @@ export const EventoDetalle = () => {
           p.numeroEntrada, // Corregido nombre de campo
           p.acreditado ? "Acreditado" : "Pendiente",
           p.medioPago || "-", // Muestra '-' si es null/undefined
+          p.medioPagoCancelacion || "-", // Muestra '-' si es null/undefined
           p.rubro || "-", // Muestra '-' si es null/undefined
           p.precioEntrada !== null
             ? parseFloat(p.precioEntrada).toLocaleString("es-AR")
@@ -613,6 +625,7 @@ export const EventoDetalle = () => {
         "Teléfono",
         "Correo",
         "Medio Pago",
+        "Medio Pago Cancelación",
         "Rubro",
         "Nueva Entrada",
       ];
@@ -638,6 +651,7 @@ export const EventoDetalle = () => {
           p.telefono || "",
           p.correo || "",
           p.medioPago || "",
+          p.medioPagoCancelacion || "",
           p.rubro || "",
           p.nuevaEntrada || "",
         ];
@@ -735,9 +749,9 @@ export const EventoDetalle = () => {
     return (
       p.nombre?.toLowerCase().includes(term) ||
       p.apellido?.toLowerCase().includes(term) ||
-      p.dni?.toLowerCase().includes(term)
+      p.dni?.toLowerCase().includes(term) ||
       // Podrías añadir más campos si quieres:
-      // || p.numeroEntrada?.toLowerCase().includes(term)
+      p.numeroEntrada?.toLowerCase().includes(term)
       // || p.correo?.toLowerCase().includes(term)
     );
   });
@@ -835,7 +849,7 @@ export const EventoDetalle = () => {
         {/* Input de Búsqueda */}
 
         <Input.Search
-          placeholder="Buscar por Nombre, Apellido o DNI..."
+          placeholder="Buscar por Nombre, Apellido, N° de Entrada o DNI..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           onSearch={(value) => setSearchTerm(value)} // Opcional: buscar al presionar enter/botón
@@ -850,6 +864,8 @@ export const EventoDetalle = () => {
             description={error} // Muestra el error específico de participantes
             type="warning"
             showIcon
+            closable
+            onClose={() => setError(null)} // Permite cerrar la alerta
             style={{ marginBottom: "16px" }}
           />
         )}
