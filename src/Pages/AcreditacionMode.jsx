@@ -248,7 +248,8 @@ export const AcreditacionMode = () => {
     const participant = participantes.find(
       (p) =>
         p.dni?.toLowerCase() === searchTerm ||
-        p.numeroEntrada?.toLowerCase() === searchTerm
+        p.numeroEntrada?.toLowerCase() === searchTerm ||
+        p.nuevaEntrada?.toLowerCase() === searchTerm
     );
 
     // Simula un pequeño delay si quieres feedback visual incluso en búsquedas rápidas
