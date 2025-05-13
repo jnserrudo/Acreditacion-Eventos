@@ -127,16 +127,20 @@ export const EventoDetalle = () => {
       }
     } catch (err) {
       console.error("Error al cargar datos del evento y participantes:", err);
-      const errorMessage =
-        err.message ||
-        `Error al cargar datos para el evento ${numericEventId}.`;
-      setError(errorMessage);
-      toast.error(errorMessage);
-      // Si el evento no existe (error 404 usualmente), el servicio debería lanzar error
-      if (err.message?.toLowerCase().includes("no encontrado")) {
-        // Podrías redirigir si el evento no existe
-        // navigate('/events', { replace: true });
-      }
+      const errorMessage = err.message || `Error al cargar datos.`;
+
+    if (err.status === 503) {
+        // Es un error de "servidor ocupado"
+        toast.error("El sistema está un poco ocupado, la información podría tardar en cargar. Por favor, espere o intente recargar.", { duration: 5000 });
+        // NO establezcas el estado 'error' que muestra la Alert intrusiva,
+        // o si lo haces, que sea un mensaje diferente y menos alarmante.
+        // setError("Servidor temporalmente ocupado. Algunos datos podrían no haberse cargado.");
+        // En este caso, podrías dejar los datos como están (o vacíos) y que el usuario reintente.
+    } else {
+        // Otros errores (404, 400, etc.)
+        setError(errorMessage); // Muestra la Alert
+        toast.error(errorMessage);
+    }
     } finally {
       setLoading(false); // Finaliza la carga
     }

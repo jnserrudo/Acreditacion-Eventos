@@ -5,6 +5,15 @@ import { entorno } from "./config.js";
 const RUTA_BASE_EVENTOS = `${entorno}/eventos`;
 const RUTA_BASE_PARTICIPANTES = `${entorno}/participantes`; // Para acciones directas
 
+
+// Helper para construir el error
+const buildError = (status, data) => {
+  const error = new Error(data.message || `Error ${status}`);
+  error.status = status; // Adjunta el status al objeto error
+  error.data = data; // Adjunta data completa del error si la hay
+  return error;
+};
+
 /**
  * Obtiene todos los participantes de un evento específico.
  * @param {number|string} eventoId El ID del evento.
@@ -17,9 +26,9 @@ export const getParticipantesByEventoId = async (eventoId) => {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
        if (response.status === 404) { // Si el evento no existe
-          throw new Error('Evento no encontrado para obtener participantes');
+          throw buildError(response.status, errorData);
        }
-      throw new Error(errorData.message || `Error al obtener participantes del evento ${eventoId}: ${response.statusText}`);
+      throw buildError(response.status, errorData);
     }
     return await response.json();
   } catch (error) {
@@ -49,15 +58,15 @@ export const createParticipante = async (eventoId, participanteData) => {
       const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
       // El backend debería devolver códigos específicos para errores comunes
       if (response.status === 404) {
-          throw new Error(errorData.message || 'Evento no encontrado para añadir participante');
+          throw buildError(response.status, errorData);
        }
        if (response.status === 409) { // Conflicto (Duplicado)
-         throw new Error(errorData.message || 'Conflicto al crear participante (DNI o Nro. Entrada ya existen)');
+         throw buildError(response.status, errorData);
        }
        if (response.status === 400) { // Datos inválidos
-         throw new Error(errorData.message || 'Datos del participante inválidos o incompletos');
+         throw buildError(response.status, errorData);
        }
-      throw new Error(errorData.message || `Error al crear participante: ${response.statusText}`);
+      throw buildError(response.status, errorData);
     }
     return await response.json();
   } catch (error) {
@@ -84,9 +93,9 @@ export const acreditarParticipante = async (participanteId) => {
      if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
       if (response.status === 404) {
-         throw new Error('Participante no encontrado para acreditar');
+         throw buildError(response.status, errorData);
       }
-      throw new Error(errorData.message || `Error al acreditar participante ${participanteId}: ${response.statusText}`);
+      throw buildError(response.status, errorData);
     }
     return await response.json(); // Devuelve el participante actualizado con acreditado = true
   } catch (error) {
@@ -131,7 +140,7 @@ export const cancelPendingAmountParticipante = async (participanteId,medioPagoSe
   
   console.log("Medio de pago seleccionado:", medioPagoSeleccionado);
   if (!medioPagoSeleccionado || typeof medioPagoSeleccionado !== 'string' || !medioPagoSeleccionado.trim()) {
-    throw new Error("Se requiere seleccionar un medio de pago para la cancelación.");
+    throw buildError(response.status, errorData);
 }
   try {
     // Llama al nuevo endpoint del backend, no necesita body
@@ -145,7 +154,7 @@ export const cancelPendingAmountParticipante = async (participanteId,medioPagoSe
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
       // El backend ahora devuelve mensajes claros para 400 o 404
-      throw new Error(errorData.message || `Error al cancelar saldo: ${response.statusText}`);
+      throw buildError(response.status, errorData);
     }
     return await response.json();
   } catch (error) {
@@ -167,7 +176,7 @@ export const updatePrecioEntradaParticipante = async (participanteId, nuevoPreci
     // Valida un poco antes de enviar
     const precioPayload = (nuevoPrecio === null || nuevoPrecio === '') ? null : parseFloat(nuevoPrecio);
     if (nuevoPrecio !== null && nuevoPrecio !== '' && (isNaN(precioPayload) || precioPayload < 0)) {
-         throw new Error("Formato de precio inválido en el frontend.");
+         throw buildError(response.status, errorData);
     }
 
     const response = await fetch(`${RUTA_BASE_PARTICIPANTES}/${participanteId}/precio-entrada`, {
@@ -177,7 +186,7 @@ export const updatePrecioEntradaParticipante = async (participanteId, nuevoPreci
     });
      if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
-      throw new Error(errorData.message || `Error al actualizar precio: ${response.statusText}`);
+      throw buildError(response.status, errorData);
     }
     return await response.json();
   } catch (error) {
@@ -196,7 +205,7 @@ export const updatePrecioEntradaParticipante = async (participanteId, nuevoPreci
  */
 export const assignNuevaEntradaParticipante = async (participanteId, nuevaEntrada) => {
     if (!nuevaEntrada || typeof nuevaEntrada !== 'string' || !nuevaEntrada.trim()) {
-        throw new Error("El nuevo número de entrada no puede estar vacío.");
+        throw buildError(response.status, errorData);
     }
   try {
     const response = await fetch(`${RUTA_BASE_PARTICIPANTES}/${participanteId}/asignar-nueva-entrada`, {
@@ -208,10 +217,10 @@ export const assignNuevaEntradaParticipante = async (participanteId, nuevaEntrad
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
-       if (response.status === 404) throw new Error('Participante no encontrado.');
-       if (response.status === 400) throw new Error(errorData.message || 'Número de entrada inválido.');
-       if (response.status === 409) throw new Error(errorData.message || 'Conflicto: Nueva entrada ya asignada.'); // Si implementaste chequeo backend
-      throw new Error(errorData.message || `Error al asignar nueva entrada: ${response.statusText}`);
+       if (response.status === 404) throw buildError(response.status, errorData);
+       if (response.status === 400) throw buildError(response.status, errorData);
+       if (response.status === 409) throw buildError(response.status, errorData);
+      throw buildError(response.status, errorData);
     }
     return await response.json(); // Devuelve el participante actualizado
   } catch (error) {
@@ -237,10 +246,10 @@ export const updateManyPreciosEntradaParticipantes = async (ids = [], nuevoPreci
   // ... (Validación similar a la individual para nuevoPrecio) ...
   const precioPayload = (nuevoPrecio === null || nuevoPrecio === '') ? null : parseFloat(nuevoPrecio);
   if (nuevoPrecio !== null && nuevoPrecio !== '' && (isNaN(precioPayload) || precioPayload < 0)) {
-       throw new Error("Formato de precio inválido.");
+       throw buildError(response.status, errorData);
   }
   if (!Array.isArray(ids) || ids.length === 0) {
-      throw new Error("Se requiere una lista de IDs.");
+      throw buildError(response.status, errorData);
   }
 
   try {
@@ -252,7 +261,7 @@ export const updateManyPreciosEntradaParticipantes = async (ids = [], nuevoPreci
       });
       if (!response.ok) {
           const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
-          throw new Error(errorData.message || `Error al actualizar precios masivamente: ${response.statusText}`);
+          throw buildError(response.status, errorData);
       }
       return await response.json(); // Devuelve { count: X }
   } catch (error) {

@@ -3,6 +3,15 @@ import { entorno } from "./config.js"; // Importa la URL base
 
 const RUTA_EVENTOS = `${entorno}/eventos`; // Ruta base para eventos
 
+
+// Helper para construir el error
+const buildError = (status, data) => {
+  const error = new Error(data.message || `Error ${status}`);
+  error.status = status; // Adjunta el status al objeto error
+  error.data = data; // Adjunta data completa del error si la hay
+  return error;
+};
+
 /**
  * Obtiene todos los eventos.
  * @returns {Promise<Array>} Una promesa que resuelve a un array de eventos.
@@ -14,7 +23,7 @@ export const getAllEventos = async () => {
     if (!response.ok) {
       // Si el servidor devuelve un error (4xx, 5xx), intenta leer el mensaje
       const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
-      throw new Error(errorData.message || `Error al obtener eventos: ${response.statusText}`);
+      throw buildError(response.status, errorData);
     }
     return await response.json(); // Devuelve el array de eventos
   } catch (error) {
@@ -37,7 +46,7 @@ export const getEventoById = async (id) => {
        if (response.status === 404) {
           throw new Error('Evento no encontrado');
        }
-      throw new Error(errorData.message || `Error al obtener evento ${id}: ${response.statusText}`);
+      throw buildError(response.status, errorData);
     }
     return await response.json();
   } catch (error) {
@@ -65,7 +74,7 @@ export const createEvento = async (eventoData) => {
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
-      throw new Error(errorData.message || `Error al crear evento: ${response.statusText}`);
+      throw buildError(response.status, errorData);
     }
     return await response.json(); // Devuelve el evento creado
   } catch (error) {
@@ -95,7 +104,7 @@ export const updateEvento = async (id, eventoData) => {
        if (response.status === 404) {
           throw new Error('Evento no encontrado para actualizar');
        }
-      throw new Error(errorData.message || `Error al actualizar evento ${id}: ${response.statusText}`);
+      throw buildError(response.status, errorData);
     }
     return await response.json(); // Devuelve el evento actualizado
   } catch (error) {
