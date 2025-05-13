@@ -758,6 +758,103 @@ export const EventoDetalle = () => {
 
   // ... luego en el return usas <ParticipantesListas participants={filteredParticipants} />
 
+
+
+
+/* -------------ORDENAMIENTO Y FILTRADO DE LA TABLA DE PARTICIPANTES */
+
+
+
+// --- NUEVA FUNCIÓN DE ORDENAMIENTO ---
+const getSortedParticipants = (participantesToSort) => {
+  if (!participantesToSort || participantesToSort.length === 0) {
+      return [];
+  }
+
+  // Crear una copia para no mutar el estado original directamente
+  const toSort = [...participantesToSort];
+
+  toSort.sort((a, b) => {
+      // Convertir a números para comparación segura, manejar nulls
+      const montoA = parseFloat(a.montoPagado || 0);
+      const precioA = a.precioEntrada !== null ? parseFloat(a.precioEntrada) : null; // null si no hay precio
+      const acreditadoA = a.acreditado;
+
+      const montoB = parseFloat(b.montoPagado || 0);
+      const precioB = b.precioEntrada !== null ? parseFloat(b.precioEntrada) : null;
+      const acreditadoB = b.acreditado;
+
+      // --- Lógica de Prioridad ---
+      // 1. Falta Cancelar Saldo (tiene precio y no está pago completo)
+      const faltaCancelarA = precioA !== null && montoA < precioA;
+      const faltaCancelarB = precioB !== null && montoB < precioB;
+
+      // 2. Pendiente de Acreditar (y pago completo o sin precio)
+      const pendienteAcreditarA = !acreditadoA && (precioA === null || montoA >= precioA);
+      const pendienteAcreditarB = !acreditadoB && (precioB === null || montoB >= precioB);
+
+      // 3. Acreditado
+      // (inverso de pendienteAcreditarA/B si ya se cumplió el pago, o simplemente acreditadoA/B)
+
+
+      // --- Aplicar Orden ---
+      // Prioridad 1: Falta Cancelar Saldo va primero
+      if (faltaCancelarA && !faltaCancelarB) return -1; // a antes que b
+      if (!faltaCancelarA && faltaCancelarB) return 1;  // b antes que a
+
+      // Si ambos están en el mismo estado de "faltaCancelar" (o ninguno lo está)
+      // Prioridad 2: Pendiente de Acreditar (con pago OK) va antes que Acreditados
+      if (faltaCancelarA === faltaCancelarB) {
+          if (pendienteAcreditarA && !pendienteAcreditarB) return -1;
+          if (!pendienteAcreditarA && pendienteAcreditarB) return 1;
+
+          // Si ambos están en el mismo estado de "pendienteAcreditar"
+          // (es decir, ambos son pendientes o ambos son acreditados y pago OK)
+          // O si ambos "faltan cancelar" (orden secundario dentro de ese grupo)
+          // Prioridad 3: Dentro de cada grupo, los no acreditados van antes que los acreditados
+          // (Esto ya está cubierto por pendienteAcreditarA vs !pendienteAcreditarA si faltaCancelarA/B son iguales)
+          // Si el estado de acreditación es el mismo (o no aplica), ordena por nombre/apellido
+          if (acreditadoA === acreditadoB || (faltaCancelarA && faltaCancelarB) || (pendienteAcreditarA && pendienteAcreditarB)) {
+              const apellidoCompare = (a.apellido || '').localeCompare(b.apellido || '');
+              if (apellidoCompare !== 0) return apellidoCompare;
+              return (a.nombre || '').localeCompare(b.nombre || '');
+          }
+      }
+      // Por defecto, si no hay otra regla (no debería llegar aquí con la lógica anterior)
+      return 0;
+  });
+  return toSort;
+};
+
+
+// --- Lógica de Filtrado y Ordenamiento Combinada ---
+const getProcessedParticipants = () => {
+  let processedList = [...participantes]; // Copia para trabajar
+
+  // 1. Filtrar por término de búsqueda
+  const term = searchTerm.toLowerCase().trim();
+  if (term) {
+      processedList = processedList.filter(p =>
+          p.nombre?.toLowerCase().includes(term) ||
+          p.apellido?.toLowerCase().includes(term) ||
+          p.dni?.toLowerCase().includes(term) ||
+          p.numeroEntrada?.toLowerCase().includes(term)
+      );
+  }
+
+  // 2. Ordenar la lista (ya filtrada o la original si no hay búsqueda)
+  return getSortedParticipants(processedList);
+};
+
+// Llama a esta función para obtener la lista a pasar a la tabla
+const participantesParaTabla = getProcessedParticipants();
+
+/* ---------------------------------------------------- */
+
+
+
+
+
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
       {/* Fila Título y Volver */}
@@ -874,7 +971,7 @@ export const EventoDetalle = () => {
 
         {/* Pasar lista FILTRADA a ParticipantesListas */}
         <ParticipantesListas
-          participants={filteredParticipants}
+          participants={participantesParaTabla}
           onCancelPayment={handleCancelPendingAmount} // Pasa la función correcta
           onAssignNewEntry={showAssignEntradaModal} // Pasa la función correcta
           onUpdatePrecioEntrada={showEditPrecioModal} // Pasa la función que ABRE el modal de editar precio
