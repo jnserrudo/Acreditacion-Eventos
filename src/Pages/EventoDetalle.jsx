@@ -187,6 +187,8 @@ export const EventoDetalle = () => {
 
     // --- Listener para NUEVOS participantes ---
     const handleParticipantCreated = (nuevoParticipante) => {
+      console.log(`[${socket.id}] RECIBIDO participant_created en ${window.location.pathname}:`, nuevoParticipante);
+
       console.log("Recibido [participant_created]:", nuevoParticipante);
       if (nuevoParticipante?.eventoId !== numericEventId) return;
 
@@ -200,7 +202,7 @@ export const EventoDetalle = () => {
 
     // --- Listener para participantes ACTUALIZADOS (acreditados) ---
     const handleParticipantUpdated = (updatedParticipant) => {
-      console.log("Recibido [participant_updated]:", updatedParticipant);
+      console.log(`[${socket.id}] RECIBIDO participant_updated en ${window.location.pathname}:`, updatedParticipant);
       if (updatedParticipant?.eventoId !== numericEventId) return;
 
       // Actualiza el participante en la lista local

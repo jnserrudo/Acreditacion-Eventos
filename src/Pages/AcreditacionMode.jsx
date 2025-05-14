@@ -130,6 +130,9 @@ export const AcreditacionMode = () => {
 
     // --- Listener para actualizaciones ---
     const handleParticipantUpdate = (updatedParticipant) => {
+      console.log(`[${socket.id}] RECIBIDO participant_updated en ${window.location.pathname}:`, updatedParticipant);
+
+
       console.log("Recibido [participant_updated]:", updatedParticipant);
       if (updatedParticipant?.eventoId !== numericEventId) return;
 

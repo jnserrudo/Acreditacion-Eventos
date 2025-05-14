@@ -346,10 +346,25 @@ export const ParticipantesListas = ({
         }
       },
       filters: [
-        /* ... filtros si los necesitas ... */
+        { text: "Total", value: "Total" },
+        { text: "Parcial", value: "Parcial" },
+        { text: "Pendiente", value: "Pendiente" },
       ],
       onFilter: (value, record) => {
         /* ... lógica de filtro ... */
+        const monto = parseFloat(record.montoPagado || 0);
+        const precio = parseFloat(record.precioEntrada); // NaN si es null
+
+        if (isNaN(precio)) {
+          // Si no tiene precio asignado
+          return value === "N/A";
+        } else if (monto >= precio) {
+          return value === "Total";
+        } else if (monto > 0) {
+          return value === "Parcial";
+        } else {
+          return value === "Pendiente"; // Pendiente si monto es 0 o menos
+        }
       },
     },
 
