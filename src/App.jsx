@@ -22,6 +22,10 @@ const { Title } = Typography;
 import { Toaster } from 'react-hot-toast'; // Importa Toaster
 
 
+// Importa la pantalla de restricción
+import RestrictedScreen from './Components/RestrictedScreen'; // Asegúrate que la ruta sea correcta
+
+
 // --- Error Boundary ---
 import { ErrorBoundary } from 'react-error-boundary'; // Importa de la librería
 import ErrorFallback from './Components/ErrorFallback'; // Importa tu componente de fallback
@@ -32,8 +36,24 @@ const logError = (error, info) => {
   console.error("Error capturado por ErrorBoundary:", error, info);
 };
 
+// --- CONTROL DE LA PANTALLA DE RESTRICCIÓN ---
+// Cambia a 'false' cuando quieras ver tu aplicación normal
+const SHOW_RESTRICTED_SCREEN = true; 
+// ----------------------------------------------
+
+
 function App() {
   // const { isAuthenticated } = useAuth(); // Ejemplo si usas contexto de autenticación
+
+
+ // Si quieres controlarlo con estado para cambiarlo sin recompilar (ej. desde devtools o una condición):
+  // const [showRestricted, setShowRestricted] = useState(true);
+
+  // Si la pantalla de restricción debe mostrarse, renderízala y nada más.
+  if (SHOW_RESTRICTED_SCREEN) {
+    // if (showRestricted) { // si usas el estado
+      return <RestrictedScreen />;
+    }
 
   return (
     <Router>
