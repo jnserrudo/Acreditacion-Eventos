@@ -38,6 +38,8 @@ export const EventoABM = () => {
   const [editingEvent, setEditingEvent] = useState(null); // Guarda el evento que se está editando
   const [form] = Form.useForm(); // Instancia del formulario de AntD
 
+  const [modal, modalContextHolder] = Modal.useModal();
+
   // --- Cargar Eventos desde la API al Montar ---
   useEffect(() => {
     const fetchEventos = async () => {
@@ -161,23 +163,25 @@ export const EventoABM = () => {
     }
   };
 
+  
   // --- Manejo de Eliminación (Llama a la API) ---
   const handleDeleteEvent = (eventoId, eventoNombre) => {
-    Modal.confirm({
-      // Usa el nombre real del evento en el título
+    console.log("handleDeleteEvent eventoId", eventoId);
+    console.log("handleDeleteEvent eventoNombre", eventoNombre);
+
+    // ✅ CAMBIA Modal.confirm por modal.confirm
+    modal.confirm({
       title: `¿Eliminar el evento "${eventoNombre || "este evento"}"?`,
       content:
-        "Esta acción eliminará el evento y todos sus participantes asociados (si aplica según la configuración del backend). ¿Continuar?",
+        "Esta acción eliminará el evento y todos sus participantes asociados. ¿Continuar?",
       okText: "Sí, eliminar",
       okType: "danger",
       cancelText: "No",
-      // onOk debe ser una función que puede ser async
+
       onOk: async () => {
-        const toastId = toast.loading("Eliminando evento..."); // Muestra toast de carga
+        const toastId = toast.loading("Eliminando evento...");
         try {
-          // --- LLAMADA API: ELIMINAR EVENTO ---
           await deleteEvento(eventoId);
-          // Si la API no dio error, actualiza el estado local
           setEventos((prevEventos) =>
             prevEventos.filter((ev) => ev.id !== eventoId)
           );
@@ -186,13 +190,13 @@ export const EventoABM = () => {
             { id: toastId }
           );
         } catch (apiError) {
-          // Si la API da error al eliminar
           console.error("Error al eliminar evento:", apiError);
           const errorMessage =
             apiError.message || "No se pudo eliminar el evento.";
           toast.error(errorMessage, { id: toastId });
         }
       },
+
       onCancel() {
         console.log("Eliminación cancelada");
       },
@@ -219,6 +223,8 @@ export const EventoABM = () => {
   return (
     // Usa Fragment o Space como contenedor principal
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      {modalContextHolder}
+
       {/* Encabezado con Título y Botón Crear */}
       <div
         style={{
@@ -261,6 +267,7 @@ export const EventoABM = () => {
           onEdit={showEditModal}
           // Modifica onDelete para pasar también el nombre para el mensaje
           onDelete={(eventoId) => {
+            console.log("eventoId", eventoId);
             const evento = eventos.find((e) => e.id === eventoId);
             handleDeleteEvent(eventoId, evento?.nombre); // Pasa nombre si existe
           }}

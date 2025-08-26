@@ -38,7 +38,7 @@ const logError = (error, info) => {
 
 // --- CONTROL DE LA PANTALLA DE RESTRICCIÓN ---
 // Cambia a 'false' cuando quieras ver tu aplicación normal
-const SHOW_RESTRICTED_SCREEN = true; 
+const SHOW_RESTRICTED_SCREEN = false; 
 // ----------------------------------------------
 
 
